@@ -1,0 +1,13 @@
+{
+  "run": [{
+    "method": "script.start",
+    "params": {
+      "uri": "hf.json",
+      "params": {
+        "repo": "LyliaEngine/Pony_Diffusion_V6_XL",
+        "files": "ponyDiffusionV6XL_v6StartWithThisOne.safetensors",
+        "path": "app/models/checkpoints"
+      }
+    }
+  }]
+}

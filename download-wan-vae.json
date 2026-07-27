@@ -1,0 +1,26 @@
+{
+
+  "run": [{
+
+    "method": "script.start",
+
+    "params": {
+
+      "uri": "hf.json",
+
+      "params": {
+
+        "repo": "Comfy-Org/Wan_2.1_ComfyUI_repackaged",
+
+        "files": "split_files/vae/wan_2.1_vae.safetensors",
+
+        "path": "app/models/vae"
+
+      }
+
+    }
+
+  }]
+
+}
+

@@ -1,0 +1,13 @@
+{
+  "run": [{
+    "method": "script.start",
+    "params": {
+      "uri": "hf.json",
+      "params": {
+        "repo": "OnomaAIResearch/Illustrious-xl-early-release-v0",
+        "files": "Illustrious-XL-v0.1.safetensors",
+        "path": "app/models/checkpoints"
+      }
+    }
+  }]
+}

@@ -1,0 +1,13 @@
+{
+  "run": [{
+    "method": "script.start",
+    "params": {
+      "uri": "hf.json",
+      "params": {
+        "repo": "lokCX/4x-Ultrasharp",
+        "files": "4x-UltraSharp.pth",
+        "path": "app/models/upscale_models"
+      }
+    }
+  }]
+}

@@ -1,0 +1,26 @@
+{
+
+  "run": [{
+
+    "method": "script.start",
+
+    "params": {
+
+      "uri": "hf.json",
+
+      "params": {
+
+        "repo": "Comfy-Org/Wan_2.1_ComfyUI_repackaged",
+
+        "files": "split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+
+        "path": "app/models/text_encoders"
+
+      }
+
+    }
+
+  }]
+
+}
+
