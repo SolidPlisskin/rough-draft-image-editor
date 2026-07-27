@@ -22,6 +22,14 @@ from comfy_client import (
     upscale_image,
     wait_for_server,
 )
+from user_store import (
+    is_favorite,
+    list_favorites,
+    list_prompt_choices,
+    prompt_dropdown_update,
+    remember_prompt,
+    toggle_favorite,
+)
 
 EXAMPLE_PROMPTS = [
     "a woman with long red hair, soft lighting, detailed eyes, portrait",
@@ -114,8 +122,9 @@ def on_create(
             extra_negative=extra_negative,
             progress=progress,
         )
+        remember_prompt(description, kind="create", style=style)
         files = [str(p) for p in paths]
-        return files[0], files, msg
+        return files[0], files, msg, prompt_dropdown_update("create")
     except Exception as err:
         _handle_error(err)
 
@@ -154,7 +163,8 @@ def on_edit(
             extra_negative=extra_negative,
             progress=progress,
         )
-        return str(paths[0]), msg
+        remember_prompt(description, kind="edit", style=style)
+        return str(paths[0]), msg, prompt_dropdown_update("edit")
     except Exception as err:
         _handle_error(err)
 
@@ -210,7 +220,8 @@ def on_video_wan(
             seed=int(seed),
             progress=progress,
         )
-        return str(path), msg
+        remember_prompt(description, kind="wan")
+        return str(path), msg, prompt_dropdown_update("wan")
     except Exception as err:
         _handle_error(err)
 
@@ -226,16 +237,26 @@ def _style_map(choice: str) -> str:
     return "Anime"
 
 
-def _gallery_status(images: list[str], videos: list[str]) -> str:
+def apply_recent_prompt(choice: str):
+    return choice or ""
+
+
+def _gallery_status(images: list[str], videos: list[str], filter_mode: str) -> str:
+    fav_count = len(list_favorites())
+    mode = filter_mode or "All"
     return (
-        f"**{len(images)}** image(s) · **{len(videos)}** video(s) in "
-        f"`{output_dir()}` (newest first)"
+        f"**{len(images)}** image(s) · **{len(videos)}** video(s) · "
+        f"**{fav_count}** favorite(s) — showing **{mode}**"
     )
 
 
-def refresh_gallery():
+def refresh_gallery(filter_mode: str = "All"):
     images = list_recent_images()
     videos = list_recent_videos()
+    if (filter_mode or "All").startswith("Favorites"):
+        favs = set(list_favorites())
+        images = [p for p in images if str(Path(p).resolve()) in favs]
+        videos = [p for p in videos if str(Path(p).resolve()) in favs]
     choices = [Path(v).name for v in videos]
     video_map = {Path(v).name: v for v in videos}
     selected = choices[0] if choices else None
@@ -244,7 +265,7 @@ def refresh_gallery():
         images,
         gr.update(choices=choices, value=selected),
         preview,
-        _gallery_status(images, videos),
+        _gallery_status(images, videos, filter_mode),
         video_map,
     )
 
@@ -263,7 +284,9 @@ def on_select_gallery_image(gallery, evt: gr.SelectData):
     except (IndexError, TypeError):
         return None, "Select an image in the gallery."
     path = item[0] if isinstance(item, (list, tuple)) else item
-    return str(path), f"Selected `{Path(path).name}`"
+    path = str(path)
+    star = "★" if is_favorite(path) else "☆"
+    return path, f"{star} Selected `{Path(path).name}`"
 
 
 def on_select_batch_image(gallery, evt: gr.SelectData):
@@ -279,6 +302,28 @@ def require_selected_image(path: str | None) -> str:
     if not Path(path).exists():
         raise gr.Error("That file is gone. Click Refresh gallery.")
     return path
+
+
+def star_image(path: str | None, filter_mode: str):
+    try:
+        _, msg = toggle_favorite(require_selected_image(path))
+    except Exception as err:
+        if isinstance(err, gr.Error):
+            raise
+        raise gr.Error(str(err)) from err
+    gal = refresh_gallery(filter_mode)
+    return msg, *gal
+
+
+def star_video(name: str | None, video_map: dict, filter_mode: str):
+    if not name or not video_map or name not in video_map:
+        raise gr.Error("Pick a video first.")
+    try:
+        _, msg = toggle_favorite(video_map[name])
+    except Exception as err:
+        raise gr.Error(str(err)) from err
+    gal = refresh_gallery(filter_mode)
+    return msg, *gal
 
 
 def send_to_edit(path: str | None):
@@ -314,6 +359,13 @@ def build_ui() -> gr.Blocks:
                             label="Describe your image",
                             lines=4,
                             placeholder="Describe subject, pose, lighting, mood…",
+                        )
+                        c_history = gr.Dropdown(
+                            label="Recent prompts",
+                            choices=list_prompt_choices("create"),
+                            value=None,
+                            allow_custom_value=False,
+                            interactive=True,
                         )
                         c_style = gr.Radio(
                             STYLE_CHOICES,
@@ -383,6 +435,13 @@ def build_ui() -> gr.Blocks:
                             label="Describe the changes",
                             lines=3,
                             placeholder="Same pose but different outfit, softer lighting…",
+                        )
+                        e_history = gr.Dropdown(
+                            label="Recent prompts",
+                            choices=list_prompt_choices("edit"),
+                            value=None,
+                            allow_custom_value=False,
+                            interactive=True,
                         )
                         e_style = gr.Radio(
                             STYLE_CHOICES,
@@ -473,6 +532,13 @@ def build_ui() -> gr.Blocks:
                             lines=4,
                             placeholder="A woman turning toward camera, hair moving, soft light…",
                         )
+                        w_history = gr.Dropdown(
+                            label="Recent prompts",
+                            choices=list_prompt_choices("wan"),
+                            value=None,
+                            allow_custom_value=False,
+                            interactive=True,
+                        )
                         w_img = gr.Image(
                             label="Optional reference image (image-to-video)",
                             type="filepath",
@@ -499,9 +565,15 @@ def build_ui() -> gr.Blocks:
             with gr.Tab("Gallery"):
                 gr.Markdown(
                     "Browse recent results from the output folder. "
-                    "Select an image, then send it to Edit / SVD / WAN."
+                    "Star favorites, filter to them, or send an image to Edit / SVD / WAN."
                 )
-                g_refresh = gr.Button("Refresh gallery", variant="secondary")
+                with gr.Row():
+                    g_filter = gr.Radio(
+                        ["All", "Favorites only"],
+                        value="All",
+                        label="Show",
+                    )
+                    g_refresh = gr.Button("Refresh gallery", variant="secondary")
                 g_status = gr.Markdown("")
                 with gr.Row():
                     with gr.Column(scale=2):
@@ -518,6 +590,7 @@ def build_ui() -> gr.Blocks:
                             interactive=False,
                         )
                         with gr.Row():
+                            g_star = gr.Button("★ Star / unstar image")
                             g_to_edit = gr.Button("Use in Edit")
                             g_to_svd = gr.Button("Use in SVD video")
                             g_to_wan = gr.Button("Use in WAN video")
@@ -530,6 +603,7 @@ def build_ui() -> gr.Blocks:
                             interactive=True,
                         )
                         g_video = gr.Video(label="Video preview", height=360)
+                        g_star_video = gr.Button("★ Star / unstar video")
                         g_video_map = gr.State({})
 
         gr.Examples(
@@ -551,11 +625,17 @@ def build_ui() -> gr.Blocks:
 
 **Reliability:** Progress while generating; **Cancel** stops the UI job and the ComfyUI engine.
 
+**History & favorites:** Recent prompts reload from the dropdowns; star items in Gallery (saved locally).
+
 **First run tips:** Image ~20–90s. Upscale ~5–20s. Video ~2–10 min. In Pinokio use **Open AI Creator**.
             """
         )
 
         gallery_outputs = [g_images, g_video_pick, g_video, g_status, g_video_map]
+
+        c_history.change(apply_recent_prompt, [c_history], [c_desc])
+        e_history.change(apply_recent_prompt, [e_history], [e_desc])
+        w_history.change(apply_recent_prompt, [w_history], [w_desc])
 
         c_event = c_btn.click(
             on_create,
@@ -571,13 +651,13 @@ def build_ui() -> gr.Blocks:
                 c_neg_preset,
                 c_neg_extra,
             ],
-            [c_out, c_run_gallery, c_status],
-        ).then(refresh_gallery, outputs=gallery_outputs)
+            [c_out, c_run_gallery, c_status, c_history],
+        ).then(refresh_gallery, [g_filter], gallery_outputs)
         c_run_gallery.select(
             on_select_batch_image, [c_run_gallery], [c_out, c_status]
         )
         c_up_event = c_upscale.click(on_upscale, [c_out], [c_out, c_status]).then(
-            refresh_gallery, outputs=gallery_outputs
+            refresh_gallery, [g_filter], gallery_outputs
         )
         e_event = e_btn.click(
             on_edit,
@@ -594,21 +674,21 @@ def build_ui() -> gr.Blocks:
                 e_neg_preset,
                 e_neg_extra,
             ],
-            [e_out, e_status],
-        ).then(refresh_gallery, outputs=gallery_outputs)
+            [e_out, e_status, e_history],
+        ).then(refresh_gallery, [g_filter], gallery_outputs)
         e_up_event = e_upscale.click(on_upscale, [e_out], [e_out, e_status]).then(
-            refresh_gallery, outputs=gallery_outputs
+            refresh_gallery, [g_filter], gallery_outputs
         )
         v_event = v_btn.click(
             on_img2video_svd,
             [v_img, v_frames, v_fps, v_motion, v_seed],
             [v_out, v_status],
-        ).then(refresh_gallery, outputs=gallery_outputs)
+        ).then(refresh_gallery, [g_filter], gallery_outputs)
         w_event = w_btn.click(
             on_video_wan,
             [w_desc, w_img, w_length, w_fps, w_quality, w_seed],
-            [w_out, w_status],
-        ).then(refresh_gallery, outputs=gallery_outputs)
+            [w_out, w_status, w_history],
+        ).then(refresh_gallery, [g_filter], gallery_outputs)
 
         cancelable = [c_event, c_up_event, e_event, e_up_event, v_event, w_event]
         c_cancel.click(on_cancel, outputs=[c_status], cancels=cancelable)
@@ -616,10 +696,21 @@ def build_ui() -> gr.Blocks:
         v_cancel.click(on_cancel, outputs=[v_status], cancels=cancelable)
         w_cancel.click(on_cancel, outputs=[w_status], cancels=cancelable)
 
-        g_refresh.click(refresh_gallery, outputs=gallery_outputs)
-        demo.load(refresh_gallery, outputs=gallery_outputs)
+        g_refresh.click(refresh_gallery, [g_filter], gallery_outputs)
+        g_filter.change(refresh_gallery, [g_filter], gallery_outputs)
+        demo.load(refresh_gallery, [g_filter], gallery_outputs)
         g_images.select(on_select_gallery_image, [g_images], [g_selected, g_action])
         g_video_pick.change(on_pick_video, [g_video_pick, g_video_map], [g_video])
+        g_star.click(
+            star_image,
+            [g_selected, g_filter],
+            [g_action, *gallery_outputs],
+        )
+        g_star_video.click(
+            star_video,
+            [g_video_pick, g_video_map, g_filter],
+            [g_action, *gallery_outputs],
+        )
         g_to_edit.click(send_to_edit, [g_selected], [e_img, g_action])
         g_to_svd.click(send_to_svd, [g_selected], [v_img, g_action])
         g_to_wan.click(send_to_wan, [g_selected], [w_img, g_action])
