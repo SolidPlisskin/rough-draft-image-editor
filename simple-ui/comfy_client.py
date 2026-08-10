@@ -15,26 +15,28 @@ WAN_CLIP = "umt5_xxl_fp8_e4m3fn_scaled.safetensors"
 WAN_VAE = "wan_2.1_vae.safetensors"
 WAN_CLIP_VISION = "clip_vision_h.safetensors"
 
-PONY_POSITIVE_PREFIX = "score_9, score_8_up, score_7_up, source_anime, "
+PONY_POSITIVE_SUFFIX = "score_9, score_8_up, score_7_up, source_anime"
 PONY_NEGATIVE = (
     "score_4, score_5, blurry, low quality, bad anatomy, bad hands, watermark, text"
 )
 ILLUSTRIOUS_CHECKPOINT = "Illustrious-XL-v0.1.safetensors"
-ILLUSTRIOUS_POSITIVE_PREFIX = "masterpiece, best quality, very aesthetic, "
+ILLUSTRIOUS_POSITIVE_SUFFIX = "masterpiece, best quality, very aesthetic"
 ILLUSTRIOUS_NEGATIVE = "low quality, worst quality, bad anatomy, bad hands, watermark, text"
 REALISTIC_CHECKPOINT = "Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors"
-REALISTIC_POSITIVE_PREFIX = (
-    "photorealistic, hyperrealistic, raw photo, natural skin texture, "
-    "sharp focus, realistic lighting, "
+REALISTIC_POSITIVE_SUFFIX = (
+    "photorealistic, natural skin texture, sharp focus, realistic lighting"
 )
 REALISTIC_NEGATIVE = (
     "cartoon, anime, illustration, painting, drawing, 3d render, cgi, "
     "blurry, low quality, bad anatomy, bad hands, watermark, text, oversaturated"
 )
 FLUX_CHECKPOINT = "flux1-dev-fp8.safetensors"
-FLUX_POSITIVE_PREFIX = ""
+FLUX_POSITIVE_SUFFIX = ""
 FLUX_NEGATIVE = ""
+FLUX_GUIDANCE = 3.5
 UPSCALER_MODEL = "4x-UltraSharp.pth"
+FACEID_ADAPTER = "ip-adapter-faceid-plusv2_sdxl.bin"
+FACEID_LORA = "ip-adapter-faceid-plusv2_sdxl_lora.safetensors"
 WAN_NEGATIVE = (
     "blurry, low quality, bad anatomy, watermark, text, static, worst quality"
 )
@@ -291,6 +293,8 @@ def get_capabilities() -> dict:
         "realistic": _model_exists("checkpoints", REALISTIC_CHECKPOINT),
         "flux": _model_exists("checkpoints", FLUX_CHECKPOINT),
         "upscale": _model_exists("upscale_models", UPSCALER_MODEL),
+        "faceid": _model_exists("ipadapter", FACEID_ADAPTER)
+        and _model_exists("loras", FACEID_LORA),
         "svd_video": _model_exists("checkpoints", SVD_CHECKPOINT),
         "wan_video": all(
             [
@@ -344,16 +348,67 @@ def pick_checkpoint(style: str) -> str:
     raise RuntimeError(missing)
 
 
-def style_prompts(style: str, description: str) -> tuple[str, str]:
-    text = description.strip()
+def style_prompts(
+    style: str, description: str, *, mode: str = "create"
+) -> tuple[str, str]:
+    """Build prompts with the user's words first so instructions are followed."""
+    text = (description or "").strip()
     key = style.lower()
     if key.startswith("flux"):
-        return FLUX_POSITIVE_PREFIX + text, FLUX_NEGATIVE
-    if key.startswith("realistic") or key.startswith("photo"):
-        return REALISTIC_POSITIVE_PREFIX + text, REALISTIC_NEGATIVE
-    if key.startswith("illustration"):
-        return ILLUSTRIOUS_POSITIVE_PREFIX + text, ILLUSTRIOUS_NEGATIVE
-    return PONY_POSITIVE_PREFIX + text, PONY_NEGATIVE
+        suffix, negative = FLUX_POSITIVE_SUFFIX, FLUX_NEGATIVE
+    elif key.startswith("realistic") or key.startswith("photo"):
+        suffix, negative = REALISTIC_POSITIVE_SUFFIX, REALISTIC_NEGATIVE
+    elif key.startswith("illustration"):
+        suffix, negative = ILLUSTRIOUS_POSITIVE_SUFFIX, ILLUSTRIOUS_NEGATIVE
+    else:
+        suffix, negative = PONY_POSITIVE_SUFFIX, PONY_NEGATIVE
+
+    if not text:
+        return suffix, negative
+
+    # FaceID: novel scene/pose, but lock to the reference person's face.
+    if mode == "faceid":
+        lead = (
+            f"{text}, the exact same person as the face reference photo, "
+            f"identical face identity, matching facial features, same age and ethnicity"
+        )
+        keep_neg = (
+            "different person, different face, wrong identity, face morph, "
+            "celebrity lookalike, identity change, deformed face"
+        )
+        if negative:
+            negative = f"{negative}, {keep_neg}"
+        else:
+            negative = keep_neg
+    # Inpaint: keep identity; describe only the change.
+    elif mode in ("edit", "inpaint"):
+        lead = (
+            f"exact same woman, same face, same body, same pose, same camera angle, "
+            f"same background, same lighting, photorealistic edit of the existing photo, "
+            f"do not invent a new person or scene, only this change: {text}"
+        )
+        keep_neg = (
+            "different person, different face, different pose, different background, "
+            "new scene, full body recreation, identity change, different hair length"
+        )
+        if negative:
+            negative = f"{negative}, {keep_neg}"
+        else:
+            negative = keep_neg
+    else:
+        lead = text
+
+    if suffix:
+        return f"{lead}, {suffix}", negative
+    return lead, negative
+
+
+def clamp_edit_strength(style: str, strength: float) -> float:
+    """Flux recreates the photo if denoise is high — keep edits gentler."""
+    value = max(0.05, min(1.0, float(strength)))
+    if style.lower().startswith("flux"):
+        return min(value, 0.52)
+    return value
 
 
 def quality_settings(
@@ -407,8 +462,10 @@ def resolve_seed(seed: int | None) -> int:
 def sampler_settings(style: str) -> tuple[float, str, str]:
     """Return cfg, sampler_name, scheduler for the style."""
     if style.lower().startswith("flux"):
+        # Flux uses FluxGuidance for prompt strength; KSampler CFG stays 1.0.
         return 1.0, "euler", "simple"
-    return 7.0, "euler_ancestral", "normal"
+    # Slightly higher CFG helps SDXL models follow instructions.
+    return 8.0, "euler_ancestral", "normal"
 
 
 def compose_negative(
@@ -461,6 +518,89 @@ def upload_image(source: str | Path) -> str:
     return name
 
 
+def upload_mask_array(mask_l_image) -> str:
+    """Save a single-channel or RGB mask (white = edit) into ComfyUI input."""
+    from PIL import Image
+    import numpy as np
+
+    input_dir().mkdir(parents=True, exist_ok=True)
+    name = f"mask_{int(time.time())}_{uuid.uuid4().hex[:8]}.png"
+    dest = input_dir() / name
+    arr = np.asarray(mask_l_image)
+    if arr.ndim == 3:
+        # Prefer alpha if present, else brightness
+        if arr.shape[-1] == 4:
+            arr = arr[:, :, 3]
+        else:
+            arr = arr[:, :, 0]
+    Image.fromarray(arr.astype("uint8"), mode="L").convert("RGB").save(dest)
+    return name
+
+
+def editor_data_to_image_and_mask(editor) -> tuple[str, str]:
+    """Turn a Gradio ImageEditor value into uploaded image + mask filenames."""
+    from PIL import Image
+    import numpy as np
+
+    if editor is None:
+        raise RuntimeError("Add a starting photo first.")
+
+    if isinstance(editor, (str, Path)):
+        raise RuntimeError(
+            "Paint over the area you want to change (for example her shirt), then try again."
+        )
+
+    if not isinstance(editor, dict):
+        raise RuntimeError("Could not read the editor image. Re-upload the photo.")
+
+    background = editor.get("background")
+    layers = editor.get("layers") or []
+    if background is None:
+        raise RuntimeError("Add a starting photo first.")
+
+    if isinstance(background, (str, Path)):
+        bg_img = Image.open(background).convert("RGB")
+    else:
+        bg_img = Image.fromarray(np.asarray(background).astype("uint8")).convert("RGB")
+
+    w, h = bg_img.size
+    mask = np.zeros((h, w), dtype=np.uint8)
+    painted = False
+    for layer in layers:
+        if layer is None:
+            continue
+        layer_img = Image.fromarray(np.asarray(layer).astype("uint8"))
+        if layer_img.size != (w, h):
+            layer_img = layer_img.resize((w, h), Image.Resampling.NEAREST)
+        arr = np.asarray(layer_img)
+        if arr.ndim == 3 and arr.shape[-1] == 4:
+            alpha = arr[:, :, 3]
+            mask = np.maximum(mask, np.where(alpha > 12, 255, 0).astype(np.uint8))
+            if alpha.max() > 12:
+                painted = True
+        elif arr.ndim == 3:
+            brightness = arr.astype(np.float32).mean(axis=2)
+            mask = np.maximum(mask, np.where(brightness > 18, 255, 0).astype(np.uint8))
+            if brightness.max() > 18:
+                painted = True
+        else:
+            mask = np.maximum(mask, np.where(arr > 18, 255, 0).astype(np.uint8))
+            if arr.max() > 18:
+                painted = True
+
+    if not painted or mask.max() == 0:
+        raise RuntimeError(
+            "Paint over the area you want to change (for example her shirt), then try again."
+        )
+
+    input_dir().mkdir(parents=True, exist_ok=True)
+    img_name = f"upload_{int(time.time())}_{uuid.uuid4().hex[:8]}.png"
+    mask_name = f"mask_{int(time.time())}_{uuid.uuid4().hex[:8]}.png"
+    bg_img.save(input_dir() / img_name)
+    Image.fromarray(mask, mode="L").convert("RGB").save(input_dir() / mask_name)
+    return img_name, mask_name
+
+
 def build_txt2img_workflow(
     positive: str,
     negative: str,
@@ -472,13 +612,21 @@ def build_txt2img_workflow(
     seed: int | None = None,
     cfg: float | None = None,
     batch_size: int = 1,
+    face_image_name: str | None = None,
 ) -> dict:
     if seed is None:
         seed = int(time.time()) % 2_147_483_647
 
+    # FaceID is SDXL-only in this stack — never pair it with Flux.
+    use_faceid = bool(face_image_name) and get_capabilities().get("faceid")
+    if use_faceid and style.lower().startswith("flux"):
+        style = "Realistic"
+        checkpoint = REALISTIC_CHECKPOINT
+
     default_cfg, sampler_name, scheduler = sampler_settings(style)
     if cfg is None:
         cfg = default_cfg
+    is_flux = style.lower().startswith("flux") and not use_faceid
     vae_input = ["1", 2]
     nodes = {
         "1": {
@@ -493,49 +641,112 @@ def build_txt2img_workflow(
         }
         vae_input = ["1a", 0]
 
-    nodes.update(
-        {
-            "2": {
-                "class_type": "CLIPTextEncode",
-                "inputs": {"text": positive, "clip": ["1", 1]},
-            },
-            "3": {
-                "class_type": "CLIPTextEncode",
-                "inputs": {"text": negative, "clip": ["1", 1]},
-            },
-            "4": {
-                "class_type": "EmptyLatentImage",
-                "inputs": {
-                    "width": width,
-                    "height": height,
-                    "batch_size": clamp_batch(batch_size),
-                },
-            },
-            "5": {
-                "class_type": "KSampler",
-                "inputs": {
-                    "seed": seed,
-                    "steps": steps,
-                    "cfg": cfg,
-                    "sampler_name": sampler_name,
-                    "scheduler": scheduler,
-                    "denoise": 1.0,
-                    "model": ["1", 0],
-                    "positive": ["2", 0],
-                    "negative": ["3", 0],
-                    "latent_image": ["4", 0],
-                },
-            },
-            "6": {
-                "class_type": "VAEDecode",
-                "inputs": {"samples": ["5", 0], "vae": vae_input},
-            },
-            "7": {
-                "class_type": "SaveImage",
-                "inputs": {"filename_prefix": "simple_ui", "images": ["6", 0]},
+    model_ref: list = ["1", 0]
+    if use_faceid:
+        # Prefer the known-good Comfy CLIP-H name; fall back to the HF-named file.
+        clip_name = (
+            "clip_vision_h.safetensors"
+            if _model_exists("clip_vision", "clip_vision_h.safetensors")
+            else "CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors"
+        )
+        nodes["1u"] = {
+            "class_type": "IPAdapterUnifiedLoaderFaceID",
+            "inputs": {
+                "model": ["1", 0],
+                "preset": "FACEID PLUS V2",
+                "lora_strength": 0.7,
+                "provider": "CUDA",
             },
         }
-    )
+        # Load CLIP vision explicitly — UnifiedLoader can cache a failed load
+        # and then return an empty clipvision model until Comfy restarts.
+        nodes["1c"] = {
+            "class_type": "CLIPVisionLoader",
+            "inputs": {"clip_name": clip_name},
+        }
+        nodes["1r"] = {
+            "class_type": "LoadImage",
+            "inputs": {"image": face_image_name},
+        }
+        nodes["1f"] = {
+            "class_type": "IPAdapterFaceID",
+            "inputs": {
+                "model": ["1u", 0],
+                "ipadapter": ["1u", 1],
+                "image": ["1r", 0],
+                "weight": 0.9,
+                "weight_faceidv2": 1.2,
+                "weight_type": "linear",
+                "combine_embeds": "concat",
+                "start_at": 0.0,
+                "end_at": 1.0,
+                "embeds_scaling": "V only",
+                "clip_vision": ["1c", 0],
+            },
+        }
+        model_ref = ["1f", 0]
+
+    nodes["2"] = {
+        "class_type": "CLIPTextEncode",
+        "inputs": {"text": positive, "clip": ["1", 1]},
+    }
+    nodes["3"] = {
+        "class_type": "CLIPTextEncode",
+        "inputs": {"text": negative, "clip": ["1", 1]},
+    }
+
+    positive_ref: list = ["2", 0]
+    negative_ref: list = ["3", 0]
+
+    if is_flux:
+        nodes["2g"] = {
+            "class_type": "FluxGuidance",
+            "inputs": {"conditioning": ["2", 0], "guidance": FLUX_GUIDANCE},
+        }
+        positive_ref = ["2g", 0]
+        nodes["1s"] = {
+            "class_type": "ModelSamplingFlux",
+            "inputs": {
+                "model": model_ref,
+                "max_shift": 1.15,
+                "base_shift": 0.5,
+                "width": width,
+                "height": height,
+            },
+        }
+        model_ref = ["1s", 0]
+
+    nodes["4"] = {
+        "class_type": "EmptyLatentImage",
+        "inputs": {
+            "width": width,
+            "height": height,
+            "batch_size": clamp_batch(batch_size),
+        },
+    }
+    nodes["5"] = {
+        "class_type": "KSampler",
+        "inputs": {
+            "seed": seed,
+            "steps": steps,
+            "cfg": cfg,
+            "sampler_name": sampler_name,
+            "scheduler": scheduler,
+            "denoise": 1.0,
+            "model": model_ref,
+            "positive": positive_ref,
+            "negative": negative_ref,
+            "latent_image": ["4", 0],
+        },
+    }
+    nodes["6"] = {
+        "class_type": "VAEDecode",
+        "inputs": {"samples": ["5", 0], "vae": vae_input},
+    }
+    nodes["7"] = {
+        "class_type": "SaveImage",
+        "inputs": {"filename_prefix": "simple_ui", "images": ["6", 0]},
+    }
     return nodes
 
 
@@ -556,6 +767,7 @@ def build_img2img_workflow(
     default_cfg, sampler_name, scheduler = sampler_settings(style)
     if cfg is None:
         cfg = default_cfg
+    is_flux = style.lower().startswith("flux")
     use_extra_vae = uses_sdxl_vae(style) and _model_exists("vae", SDXL_VAE)
     vae_input = ["1a", 0] if use_extra_vae else ["1", 2]
     nodes = {
@@ -579,28 +791,119 @@ def build_img2img_workflow(
             "class_type": "VAEEncode",
             "inputs": {"pixels": ["2", 0], "vae": vae_input},
         },
-        "6": {
-            "class_type": "KSampler",
+    }
+    if use_extra_vae:
+        nodes["1a"] = {
+            "class_type": "VAELoader",
+            "inputs": {"vae_name": SDXL_VAE},
+        }
+
+    positive_ref: list = ["3", 0]
+    model_ref: list = ["1", 0]
+    if is_flux:
+        nodes["3g"] = {
+            "class_type": "FluxGuidance",
+            "inputs": {"conditioning": ["3", 0], "guidance": FLUX_GUIDANCE},
+        }
+        positive_ref = ["3g", 0]
+        nodes["1s"] = {
+            "class_type": "ModelSamplingFlux",
             "inputs": {
-                "seed": seed,
-                "steps": steps,
-                "cfg": cfg,
-                "sampler_name": sampler_name,
-                "scheduler": scheduler,
-                "denoise": max(0.05, min(1.0, strength)),
                 "model": ["1", 0],
-                "positive": ["3", 0],
-                "negative": ["4", 0],
-                "latent_image": ["5", 0],
+                "max_shift": 1.15,
+                "base_shift": 0.5,
+                "width": 1024,
+                "height": 1024,
             },
+        }
+        model_ref = ["1s", 0]
+
+    # Bias edits toward following the text (floor at 0.55 unless user goes lower intentionally).
+    denoise = max(0.05, min(1.0, strength))
+    nodes["6"] = {
+        "class_type": "KSampler",
+        "inputs": {
+            "seed": seed,
+            "steps": steps,
+            "cfg": cfg,
+            "sampler_name": sampler_name,
+            "scheduler": scheduler,
+            "denoise": denoise,
+            "model": model_ref,
+            "positive": positive_ref,
+            "negative": ["4", 0],
+            "latent_image": ["5", 0],
         },
-        "7": {
-            "class_type": "VAEDecode",
-            "inputs": {"samples": ["6", 0], "vae": vae_input},
+    }
+    nodes["7"] = {
+        "class_type": "VAEDecode",
+        "inputs": {"samples": ["6", 0], "vae": vae_input},
+    }
+    nodes["8"] = {
+        "class_type": "SaveImage",
+        "inputs": {"filename_prefix": "simple_ui_edit", "images": ["7", 0]},
+    }
+    return nodes
+
+
+def build_inpaint_workflow(
+    positive: str,
+    negative: str,
+    checkpoint: str,
+    image_name: str,
+    mask_name: str,
+    steps: int,
+    style: str = "Realistic",
+    seed: int | None = None,
+    cfg: float | None = None,
+    denoise: float = 0.92,
+    grow_mask_by: int = 16,
+) -> dict:
+    """Edit only the masked region — keeps the rest of the photo intact."""
+    if seed is None:
+        seed = int(time.time()) % 2_147_483_647
+
+    default_cfg, sampler_name, scheduler = sampler_settings(style)
+    if cfg is None:
+        cfg = default_cfg
+    # Flux is a poor inpaint citizen in this simple stack — callers should use Realistic.
+    is_flux = style.lower().startswith("flux")
+    use_extra_vae = uses_sdxl_vae(style) and _model_exists("vae", SDXL_VAE)
+    vae_input = ["1a", 0] if use_extra_vae else ["1", 2]
+
+    nodes: dict = {
+        "1": {
+            "class_type": "CheckpointLoaderSimple",
+            "inputs": {"ckpt_name": checkpoint},
         },
-        "8": {
-            "class_type": "SaveImage",
-            "inputs": {"filename_prefix": "simple_ui_edit", "images": ["7", 0]},
+        "2": {
+            "class_type": "LoadImage",
+            "inputs": {"image": image_name},
+        },
+        "2m": {
+            "class_type": "LoadImage",
+            "inputs": {"image": mask_name},
+        },
+        "2c": {
+            "class_type": "ImageToMask",
+            "inputs": {"image": ["2m", 0], "channel": "red"},
+        },
+        "3": {
+            "class_type": "CLIPTextEncode",
+            "inputs": {"text": positive, "clip": ["1", 1]},
+        },
+        "4": {
+            "class_type": "CLIPTextEncode",
+            "inputs": {"text": negative, "clip": ["1", 1]},
+        },
+        "5": {
+            "class_type": "VAEEncodeForInpaint",
+            "inputs": {
+                "pixels": ["2", 0],
+                "vae": vae_input,
+                "mask": ["2c", 0],
+                "grow_mask_by": int(grow_mask_by),
+            },
         },
     }
     if use_extra_vae:
@@ -608,6 +911,39 @@ def build_img2img_workflow(
             "class_type": "VAELoader",
             "inputs": {"vae_name": SDXL_VAE},
         }
+
+    positive_ref: list = ["3", 0]
+    model_ref: list = ["1", 0]
+    if is_flux:
+        nodes["3g"] = {
+            "class_type": "FluxGuidance",
+            "inputs": {"conditioning": ["3", 0], "guidance": FLUX_GUIDANCE},
+        }
+        positive_ref = ["3g", 0]
+
+    nodes["6"] = {
+        "class_type": "KSampler",
+        "inputs": {
+            "seed": seed,
+            "steps": steps,
+            "cfg": cfg,
+            "sampler_name": sampler_name,
+            "scheduler": scheduler,
+            "denoise": max(0.55, min(1.0, float(denoise))),
+            "model": model_ref,
+            "positive": positive_ref,
+            "negative": ["4", 0],
+            "latent_image": ["5", 0],
+        },
+    }
+    nodes["7"] = {
+        "class_type": "VAEDecode",
+        "inputs": {"samples": ["6", 0], "vae": vae_input},
+    }
+    nodes["8"] = {
+        "class_type": "SaveImage",
+        "inputs": {"filename_prefix": "simple_ui_edit", "images": ["7", 0]},
+    }
     return nodes
 
 
@@ -950,10 +1286,24 @@ def generate_image(
     batch: int | float | None = 1,
     negative_preset: str = "Style default",
     extra_negative: str = "",
+    face_image: str | Path | None = None,
     progress=None,
 ) -> tuple[list[Path], str]:
+    face_name = None
+    prompt_mode = "create"
+    if face_image:
+        if not get_capabilities().get("faceid"):
+            raise RuntimeError(
+                "Same-person mode needs FaceID models. Run Download FaceID in Pinokio."
+            )
+        # FaceID works with SDXL checkpoints only (not Flux).
+        if style.lower().startswith("flux"):
+            style = "Realistic"
+        face_name = upload_image(face_image)
+        prompt_mode = "faceid"
+
     checkpoint = pick_checkpoint(style)
-    positive, _ = style_prompts(style, description)
+    positive, _ = style_prompts(style, description, mode=prompt_mode)
     negative = compose_negative(style, negative_preset, extra_negative)
     size, steps = resolve_steps(style, quality, aspect, steps_override)
     cfg = resolve_cfg(cfg_override)
@@ -970,6 +1320,7 @@ def generate_image(
         seed=resolved,
         cfg=cfg,
         batch_size=count,
+        face_image_name=face_name,
     )
     paths = run_workflow(
         workflow,
@@ -978,9 +1329,11 @@ def generate_image(
     )
     paths = sorted(paths, key=lambda p: p.stat().st_mtime, reverse=True)
     effective_cfg = cfg if cfg is not None else sampler_settings(style)[0]
+    face_note = ", same-person FaceID" if face_name else ""
     msg = (
         f"Saved {len(paths)} image(s) — newest `{paths[0].name}` "
-        f"(seed {resolved}, {size[0]}×{size[1]}, {steps} steps, cfg {effective_cfg:g})"
+        f"(seed {resolved}, {size[0]}×{size[1]}, {steps} steps, "
+        f"cfg {effective_cfg:g}{face_note})"
     )
     return paths, msg
 
@@ -1000,11 +1353,12 @@ def generate_img2img(
     progress=None,
 ) -> tuple[list[Path], str]:
     checkpoint = pick_checkpoint(style)
-    positive, _ = style_prompts(style, description)
+    positive, _ = style_prompts(style, description, mode="edit")
     negative = compose_negative(style, negative_preset, extra_negative)
     _, steps = resolve_steps(style, quality, aspect, steps_override)
     cfg = resolve_cfg(cfg_override)
     resolved = resolve_seed(seed)
+    strength = clamp_edit_strength(style, strength)
     uploaded = upload_image(image_path)
     workflow = build_img2img_workflow(
         positive=positive,
@@ -1022,6 +1376,52 @@ def generate_img2img(
     msg = (
         f"Saved `{paths[0].name}` (seed {resolved}, {steps} steps, "
         f"cfg {effective_cfg:g}, strength {strength:g})"
+    )
+    return paths, msg
+
+
+def generate_inpaint(
+    description: str,
+    style: str,
+    quality: str,
+    editor,
+    aspect: str = "Portrait",
+    seed: int | None = -1,
+    steps_override: int | float | None = 0,
+    cfg_override: int | float | None = 0,
+    negative_preset: str = "Style default",
+    extra_negative: str = "",
+    progress=None,
+) -> tuple[list[Path], str]:
+    """Paint-masked edit: only the brushed region is regenerated."""
+    # Photo models preserve identity in the unmasked area far better than Flux.
+    if style.lower().startswith("flux"):
+        style = "Realistic"
+    checkpoint = pick_checkpoint(style)
+    positive, _ = style_prompts(style, description, mode="inpaint")
+    negative = compose_negative(style, negative_preset, extra_negative)
+    _, steps = resolve_steps(style, quality, aspect, steps_override)
+    cfg = resolve_cfg(cfg_override)
+    resolved = resolve_seed(seed)
+    image_name, mask_name = editor_data_to_image_and_mask(editor)
+    workflow = build_inpaint_workflow(
+        positive=positive,
+        negative=negative,
+        checkpoint=checkpoint,
+        image_name=image_name,
+        mask_name=mask_name,
+        steps=steps,
+        style=style,
+        seed=resolved,
+        cfg=cfg,
+        denoise=0.92,
+        grow_mask_by=18,
+    )
+    paths = run_workflow(workflow, progress=progress)
+    effective_cfg = cfg if cfg is not None else sampler_settings(style)[0]
+    msg = (
+        f"Edited masked area → `{paths[0].name}` "
+        f"(seed {resolved}, {steps} steps, cfg {effective_cfg:g})"
     )
     return paths, msg
 

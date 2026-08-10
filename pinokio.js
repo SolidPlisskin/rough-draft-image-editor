@@ -1,7 +1,7 @@
 module.exports = {
   version: "7.0",
   title: "AI Creator",
-  description: "Simple tabs for images and video: create, edit, image-to-video, text-to-video.",
+  description: "Simple tabs for images and video: create, same person, image-to-video, text-to-video.",
   icon: "icon.png",
   menu: async (kernel, info) => {
     let installed = info.exists("app/env")
@@ -34,7 +34,8 @@ module.exports = {
         { text: "Illustration style model", icon: "fa-solid fa-download", href: "download-illustrious.json", mode: "refresh" },
         { text: "Realistic / photo style model (~7 GB)", icon: "fa-solid fa-download", href: "download-realistic.json", mode: "refresh" },
         { text: "Flux Dev FP8 — cutting edge (~17 GB)", icon: "fa-solid fa-download", href: "download-flux.json", mode: "refresh" },
-        { text: "HD upscaler (optional)", icon: "fa-solid fa-download", href: "download-upscaler.json", mode: "refresh" }
+        { text: "HD upscaler (optional)", icon: "fa-solid fa-download", href: "download-upscaler.json", mode: "refresh" },
+        { text: "Same-person FaceID (~2 GB)", icon: "fa-solid fa-download", href: "download-faceid.json", mode: "refresh" }
       ]
     }, {
       icon: "fa-solid fa-rotate",
@@ -160,7 +161,7 @@ module.exports = {
       icon: "fa-solid fa-image",
       text: "Open AI Creator",
       href: "create-images.js",
-      desc: "Simple tabs: create image, edit image, image→video, text→video."
+      desc: "Simple tabs: create image, same person, image→video, text→video."
     }, {
       icon: "fa-solid fa-folder-open",
       text: "View my saved images",

@@ -11,7 +11,6 @@ from comfy_client import (
     engine_reachable,
     generate_image,
     generate_image_to_video_svd,
-    generate_img2img,
     generate_video_wan,
     get_capabilities,
     list_checkpoints,
@@ -22,6 +21,8 @@ from comfy_client import (
     upscale_image,
     wait_for_server,
 )
+
+FACE_STYLE_CHOICES = ["Anime", "Illustration", "Photo-real"]
 from user_store import (
     is_favorite,
     list_favorites,
@@ -37,17 +38,232 @@ EXAMPLE_PROMPTS = [
     "athletic figure, dynamic pose, cinematic lighting",
 ]
 
+STYLE_CHOICES = [
+    "Anime",
+    "Illustration",
+    "Photo-real",
+    "Flux (best quality)",
+]
+
+
+def default_style() -> str:
+    caps = get_capabilities()
+    if caps.get("flux"):
+        return "Flux (best quality)"
+    if caps.get("realistic"):
+        return "Photo-real"
+    if caps.get("illustration"):
+        return "Illustration"
+    return "Anime"
+
+
+def default_edit_style() -> str:
+    """Photo edits preserve identity better on Juggernaut than Flux."""
+    caps = get_capabilities()
+    if caps.get("realistic"):
+        return "Photo-real"
+    if caps.get("flux"):
+        return "Flux (best quality)"
+    if caps.get("illustration"):
+        return "Illustration"
+    return "Anime"
+
+
+QUALITY_BEST = "Best quality"
+QUALITY_FAST = "Faster"
+QUALITY_CHOICES = [QUALITY_BEST, QUALITY_FAST]
+
+VIDEO_FROM_PHOTO = "From a photo"
+VIDEO_FROM_WORDS = "From a description"
+VIDEO_MODES = [VIDEO_FROM_PHOTO, VIDEO_FROM_WORDS]
+
+MOTION_CHOICES = ["Gentle", "Normal", "Lots"]
+
+APP_CSS = """
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,650&family=Source+Sans+3:wght@400;500;600&display=swap');
+
+:root {
+  --ink: #12141a;
+  --line: rgba(232, 220, 198, 0.12);
+  --paper: #efe6d6;
+  --muted: #a59b8c;
+  --accent: #d4a35c;
+}
+
+html, body, .gradio-container {
+  font-family: "Source Sans 3", "Segoe UI", sans-serif !important;
+  background:
+    radial-gradient(1200px 600px at 12% -10%, rgba(212, 163, 92, 0.14), transparent 55%),
+    radial-gradient(900px 500px at 100% 0%, rgba(120, 140, 180, 0.10), transparent 50%),
+    linear-gradient(180deg, #0e1015 0%, var(--ink) 40%, #0c0e13 100%) !important;
+  color: var(--paper) !important;
+}
+
+.gradio-container {
+  max-width: 1180px !important;
+  margin: 0 auto !important;
+  padding-top: 1.25rem !important;
+  padding-bottom: 2.5rem !important;
+}
+
+footer, .footer { display: none !important; }
+
+.brand-block {
+  padding: 0.4rem 0 1.1rem;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 1.1rem;
+  animation: rise 0.55s ease-out both;
+}
+
+.brand-block h1 {
+  font-family: Fraunces, Georgia, serif !important;
+  font-weight: 650 !important;
+  font-size: clamp(2.2rem, 4vw, 3rem) !important;
+  letter-spacing: -0.02em;
+  line-height: 1.05 !important;
+  margin: 0 0 0.45rem !important;
+  color: var(--paper) !important;
+}
+
+.brand-block .tagline {
+  color: var(--muted);
+  font-size: 1.05rem;
+  margin: 0;
+}
+
+.status-chip {
+  margin-top: 0.85rem;
+  display: inline-block;
+  padding: 0.35rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 0.92rem;
+  background: rgba(255,255,255,0.03);
+}
+
+.hint {
+  color: var(--muted) !important;
+  font-size: 0.95rem !important;
+  margin: 0 0 0.75rem !important;
+}
+
+.tips {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+button.primary, .primary-btn button {
+  background: linear-gradient(180deg, #e0b56d, var(--accent)) !important;
+  color: #1a140c !important;
+  border: none !important;
+  font-weight: 600 !important;
+  box-shadow: 0 8px 24px rgba(212, 163, 92, 0.22) !important;
+  transition: transform 0.15s ease, filter 0.15s ease !important;
+}
+
+button.primary:hover, .primary-btn button:hover {
+  filter: brightness(1.05);
+  transform: translateY(-1px);
+}
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.panel-rise {
+  animation: rise 0.65s ease-out 0.08s both;
+}
+
+label, .label-wrap span {
+  color: var(--muted) !important;
+  font-size: 0.86rem !important;
+}
+
+.prose, .markdown-body, .md p, .md li {
+  color: var(--paper) !important;
+}
+"""
+
+
+def _theme() -> gr.themes.Base:
+    return gr.themes.Base(
+        primary_hue=gr.themes.Color(
+            c50="#fbf5ea",
+            c100="#f3e4c8",
+            c200="#e8cfa0",
+            c300="#d4a35c",
+            c400="#c08d45",
+            c500="#a87635",
+            c600="#8d612b",
+            c700="#6f4b22",
+            c800="#53381a",
+            c900="#3a2712",
+            c950="#24180b",
+        ),
+        neutral_hue="zinc",
+        font=[gr.themes.GoogleFont("Source Sans 3"), "Segoe UI", "sans-serif"],
+        font_mono=[gr.themes.GoogleFont("IBM Plex Mono"), "monospace"],
+    ).set(
+        body_background_fill="#12141a",
+        body_background_fill_dark="#12141a",
+        body_text_color="#efe6d6",
+        body_text_color_dark="#efe6d6",
+        block_background_fill="#1a1d26",
+        block_background_fill_dark="#1a1d26",
+        block_border_color="rgba(232,220,198,0.12)",
+        block_border_color_dark="rgba(232,220,198,0.12)",
+        block_label_text_color="#a59b8c",
+        block_label_text_color_dark="#a59b8c",
+        block_title_text_color="#efe6d6",
+        block_title_text_color_dark="#efe6d6",
+        border_color_primary="rgba(232,220,198,0.12)",
+        border_color_primary_dark="rgba(232,220,198,0.12)",
+        button_primary_background_fill="#d4a35c",
+        button_primary_background_fill_dark="#d4a35c",
+        button_primary_background_fill_hover="#e0b56d",
+        button_primary_background_fill_hover_dark="#e0b56d",
+        button_primary_text_color="#1a140c",
+        button_primary_text_color_dark="#1a140c",
+        button_secondary_background_fill="#2a2f3a",
+        button_secondary_background_fill_dark="#2a2f3a",
+        button_secondary_text_color="#efe6d6",
+        button_secondary_text_color_dark="#efe6d6",
+        input_background_fill="#161922",
+        input_background_fill_dark="#161922",
+        input_border_color="rgba(232,220,198,0.14)",
+        input_border_color_dark="rgba(232,220,198,0.14)",
+    )
+
+
+def _quality_api(choice: str) -> str:
+    if choice == QUALITY_FAST:
+        return "Fast"
+    return "High detail (slower)"
+
+
+def _motion_to_bucket(choice: str) -> int:
+    key = (choice or "Normal").lower()
+    if key.startswith("gentle"):
+        return 80
+    if key.startswith("lots"):
+        return 170
+    return 127
+
 
 def _handle_error(err: Exception):
     if isinstance(err, RuntimeError):
         msg = str(err)
         if msg == "Cancelled.":
-            raise gr.Error("Cancelled.") from err
+            raise gr.Error("Stopped.") from err
         raise gr.Error(msg) from err
     if isinstance(err, (urllib.error.URLError, TimeoutError, ConnectionError)):
         raise gr.Error(
-            "Lost connection to the generation engine. "
-            "In Pinokio click **Open AI Creator** to restart it."
+            "Connection lost. In Pinokio click **Open AI Creator** to restart."
         ) from err
     raise gr.Error(f"Something went wrong: {err}") from err
 
@@ -55,11 +271,8 @@ def _handle_error(err: Exception):
 def on_cancel():
     request_cancel()
     if engine_reachable():
-        return "**Cancelled.** Stopped the current engine job."
-    return (
-        "**Cancelled.** Could not reach the engine — "
-        "in Pinokio click **Open AI Creator** if it stays stuck."
-    )
+        return "Stopped."
+    return "Stopped. If things stay stuck, reopen **Open AI Creator** in Pinokio."
 
 
 def _status_message() -> str:
@@ -68,28 +281,33 @@ def _status_message() -> str:
         wait_for_server(timeout_seconds=5)
         models = list_checkpoints()
         if not models:
-            return "**Setup needed.** In Pinokio click **Download starter pack**."
-        lines = [
-            f"**Ready** — {len(models)} image model(s) loaded.",
-            f"- Anime / character: {'yes' if caps['image'] else 'download starter pack'}",
-            f"- Illustration: {'yes' if caps.get('illustration') else 'download Illustration model'}",
-            f"- Realistic / photo: {'yes' if caps.get('realistic') else 'download Realistic model'}",
-            f"- Flux (cutting edge): {'yes' if caps.get('flux') else 'download Flux Dev FP8'}",
-            f"- HD upscale: {'yes' if caps.get('upscale') else 'download HD upscaler'}",
-            f"- Image → Video (SVD): {'yes' if caps['svd_video'] else 'download SVD video pack'}",
-            f"- Text/Image → Video (WAN): {'yes' if caps['wan_video'] else 'download WAN video pack'}",
-        ]
-        return "\n".join(lines)
+            return (
+                '<div class="status-chip">Setup needed — in Pinokio click '
+                "<b>Download starter pack</b></div>"
+            )
+        missing = []
+        if not caps.get("flux"):
+            missing.append("Flux")
+        if not caps.get("upscale"):
+            missing.append("HD upscale")
+        if not caps.get("svd_video"):
+            missing.append("photo video")
+        if not caps.get("wan_video"):
+            missing.append("described video")
+        if not caps.get("faceid"):
+            missing.append("same-person")
+        extra = (
+            f" · optional: {', '.join(missing)}" if missing else " · all features ready"
+        )
+        return (
+            f'<div class="status-chip">Ready · {len(models)} style'
+            f"{'s' if len(models) != 1 else ''} loaded{extra}</div>"
+        )
     except Exception:
-        return "**Starting…** If this stays more than 2 minutes, restart from Pinokio."
-
-
-STYLE_CHOICES = [
-    "Anime / character art",
-    "Illustration",
-    "Realistic / photorealistic",
-    "Flux / cutting edge",
-]
+        return (
+            '<div class="status-chip">Starting… if this lasts more than 2 minutes, '
+            "reopen from Pinokio</div>"
+        )
 
 
 def on_create(
@@ -103,16 +321,18 @@ def on_create(
     batch: float,
     negative_preset: str,
     extra_negative: str,
+    face_image=None,
     progress=gr.Progress(),
 ):
     description = (description or "").strip()
     if len(description) < 3:
         raise gr.Error("Write a short description first.")
     try:
+        progress(0.02, desc="Starting…")
         paths, msg = generate_image(
             description,
             _style_map(style),
-            quality,
+            _quality_api(quality),
             aspect=aspect,
             seed=int(seed),
             steps_override=steps,
@@ -120,89 +340,95 @@ def on_create(
             batch=batch,
             negative_preset=negative_preset,
             extra_negative=extra_negative,
+            face_image=face_image,
             progress=progress,
         )
         remember_prompt(description, kind="create", style=style)
         files = [str(p) for p in paths]
-        return files[0], files, msg, prompt_dropdown_update("create")
+        return files[0], files, msg.replace("Saved", "Done — saved"), prompt_dropdown_update(
+            "create"
+        )
     except Exception as err:
         _handle_error(err)
 
 
-def on_edit(
+def on_same_person(
     description: str,
     style: str,
     quality: str,
-    image,
-    strength: float,
+    face_image,
     aspect: str,
     seed: float,
     steps: float,
     cfg: float,
+    batch: float,
     negative_preset: str,
     extra_negative: str,
     progress=gr.Progress(),
 ):
-    if image is None:
-        raise gr.Error("Upload a starting image.")
     description = (description or "").strip()
+    if face_image is None:
+        raise gr.Error("Upload a clear face photo of the person first.")
     if len(description) < 3:
-        raise gr.Error("Describe how you want to change the image.")
+        raise gr.Error("Describe the new scene, pose, or outfit.")
     try:
-        paths, msg = generate_img2img(
+        progress(0.02, desc="Locking face identity…")
+        paths, msg = generate_image(
             description,
             _style_map(style),
-            quality,
-            image,
-            strength,
+            _quality_api(quality),
             aspect=aspect,
             seed=int(seed),
             steps_override=steps,
             cfg_override=cfg,
+            batch=batch,
             negative_preset=negative_preset,
             extra_negative=extra_negative,
+            face_image=face_image,
             progress=progress,
         )
         remember_prompt(description, kind="edit", style=style)
-        return str(paths[0]), msg, prompt_dropdown_update("edit")
+        files = [str(p) for p in paths]
+        return (
+            files[0],
+            files,
+            msg.replace("Saved", "Done — saved"),
+            prompt_dropdown_update("edit"),
+        )
     except Exception as err:
         _handle_error(err)
 
 
 def on_upscale(image, progress=gr.Progress()):
     if image is None:
-        raise gr.Error("Generate or upload an image first.")
+        raise gr.Error("Make or pick an image first.")
     try:
         path, msg = upscale_image(image, progress=progress)
-        return str(path), msg
+        return str(path), msg.replace("Upscaled", "Sharpened to HD")
     except Exception as err:
         _handle_error(err)
 
 
-def on_img2video_svd(
-    image, frames: int, fps: int, motion: int, seed: float, progress=gr.Progress()
-):
+def on_make_video_photo(image, motion: str, seed: float, progress=gr.Progress()):
     if image is None:
-        raise gr.Error("Upload an image to animate.")
+        raise gr.Error("Add a photo to animate.")
     try:
         path, msg = generate_image_to_video_svd(
             image,
-            frames=int(frames),
-            fps=int(fps),
-            motion=int(motion),
+            frames=25,
+            fps=6,
+            motion=_motion_to_bucket(motion),
             seed=int(seed),
             progress=progress,
         )
-        return str(path), msg
+        return str(path), msg.replace("Video saved to", "Clip ready —")
     except Exception as err:
         _handle_error(err)
 
 
-def on_video_wan(
+def on_make_video_words(
     description: str,
     image,
-    length: int,
-    fps: int,
     quality: str,
     seed: float,
     progress=gr.Progress(),
@@ -214,23 +440,32 @@ def on_video_wan(
         path, msg = generate_video_wan(
             description,
             image_path=image,
-            length=int(length),
-            fps=int(fps),
-            quality=quality,
+            length=49,
+            fps=16,
+            quality=_quality_api(quality),
             seed=int(seed),
             progress=progress,
         )
         remember_prompt(description, kind="wan")
-        return str(path), msg, prompt_dropdown_update("wan")
+        return (
+            str(path),
+            msg.replace("Video saved to", "Video ready —"),
+            prompt_dropdown_update("wan"),
+        )
     except Exception as err:
         _handle_error(err)
+
+
+def toggle_video_mode(mode: str):
+    photo = (mode or VIDEO_FROM_PHOTO).startswith(VIDEO_FROM_PHOTO)
+    return gr.update(visible=photo), gr.update(visible=not photo)
 
 
 def _style_map(choice: str) -> str:
     key = (choice or "").lower()
     if key.startswith("flux"):
         return "Flux"
-    if key.startswith("realistic") or key.startswith("photo"):
+    if key.startswith("photo") or key.startswith("realistic"):
         return "Realistic"
     if key.startswith("illustration"):
         return "Illustration"
@@ -245,8 +480,8 @@ def _gallery_status(images: list[str], videos: list[str], filter_mode: str) -> s
     fav_count = len(list_favorites())
     mode = filter_mode or "All"
     return (
-        f"**{len(images)}** image(s) · **{len(videos)}** video(s) · "
-        f"**{fav_count}** favorite(s) — showing **{mode}**"
+        f"**{len(images)}** photos · **{len(videos)}** videos · "
+        f"**{fav_count}** favorites — showing **{mode}**"
     )
 
 
@@ -278,29 +513,29 @@ def on_pick_video(name: str, video_map: dict):
 
 def on_select_gallery_image(gallery, evt: gr.SelectData):
     if gallery is None or evt is None:
-        return None, "Select an image in the gallery."
+        return None, "Pick an image."
     try:
         item = gallery[evt.index]
     except (IndexError, TypeError):
-        return None, "Select an image in the gallery."
+        return None, "Pick an image."
     path = item[0] if isinstance(item, (list, tuple)) else item
     path = str(path)
     star = "★" if is_favorite(path) else "☆"
-    return path, f"{star} Selected `{Path(path).name}`"
+    return path, f"{star} {Path(path).name}"
 
 
 def on_select_batch_image(gallery, evt: gr.SelectData):
     path, _ = on_select_gallery_image(gallery, evt)
     if not path:
-        return None, "Select an image from this run."
-    return path, f"Selected `{Path(path).name}` for upscale / preview."
+        return None, "Pick one from this run."
+    return path, f"Selected {Path(path).name}"
 
 
 def require_selected_image(path: str | None) -> str:
     if not path:
-        raise gr.Error("Select an image in the gallery first.")
+        raise gr.Error("Pick an image first.")
     if not Path(path).exists():
-        raise gr.Error("That file is gone. Click Refresh gallery.")
+        raise gr.Error("That file is gone. Refresh the gallery.")
     return path
 
 
@@ -328,40 +563,41 @@ def star_video(name: str | None, video_map: dict, filter_mode: str):
 
 def send_to_edit(path: str | None):
     p = require_selected_image(path)
-    return p, f"Sent `{Path(p).name}` to **Edit image**."
+    return p, "Sent to **Same person** — describe a new scene for them."
 
 
-def send_to_svd(path: str | None):
+def send_to_video(path: str | None):
     p = require_selected_image(path)
-    return p, f"Sent `{Path(p).name}` to **Image → Video (SVD)**."
-
-
-def send_to_wan(path: str | None):
-    p = require_selected_image(path)
-    return p, f"Sent `{Path(p).name}` to **Text/Image → Video (WAN)**."
+    return p, VIDEO_FROM_PHOTO, "Sent to **Make video**."
 
 
 def build_ui() -> gr.Blocks:
-    with gr.Blocks(title="AI Creator") as demo:
-        gr.Markdown(
+    with gr.Blocks(title="AI Creator", theme=_theme(), css=APP_CSS) as demo:
+        gr.HTML(
             """
-# AI Creator
-**Simple tabs for images and video.** No ComfyUI nodes to figure out.
+            <div class="brand-block">
+              <h1>AI Creator</h1>
+              <p class="tagline">Describe what you want. Get a polished image or clip.</p>
+            </div>
             """
         )
-        gr.Markdown(_status_message())
+        gr.HTML(_status_message())
 
-        with gr.Tabs():
-            with gr.Tab("Create image"):
-                with gr.Row():
-                    with gr.Column():
+        with gr.Tabs(elem_classes=["panel-rise"]):
+            with gr.Tab("Make image"):
+                with gr.Row(equal_height=False):
+                    with gr.Column(scale=5):
+                        gr.Markdown(
+                            '<p class="hint">Tip: be specific — subject, action, clothing, lighting, mood. Your words come first. '
+                            "Optional: add a face photo under More options to keep that person.</p>"
+                        )
                         c_desc = gr.Textbox(
                             label="Describe your image",
-                            lines=4,
-                            placeholder="Describe subject, pose, lighting, mood…",
+                            lines=5,
+                            placeholder="A woman with long red hair, soft window light, detailed eyes…",
                         )
                         c_history = gr.Dropdown(
-                            label="Recent prompts",
+                            label="Reuse a recent description",
                             choices=list_prompt_choices("create"),
                             value=None,
                             allow_custom_value=False,
@@ -369,30 +605,35 @@ def build_ui() -> gr.Blocks:
                         )
                         c_style = gr.Radio(
                             STYLE_CHOICES,
-                            value="Anime / character art",
-                            label="Style",
+                            value=default_style(),
+                            label="Look",
                         )
-                        c_quality = gr.Radio(
-                            ["Fast", "High detail (slower)"],
-                            value="Fast",
-                            label="Quality",
-                        )
-                        c_aspect = gr.Radio(
-                            list(ASPECT_CHOICES),
-                            value="Portrait",
-                            label="Aspect ratio",
-                        )
-                        c_seed = gr.Number(
-                            value=-1,
-                            precision=0,
-                            label="Seed (−1 = random)",
-                        )
-                        with gr.Accordion("Advanced", open=False):
+                        with gr.Accordion("More options", open=False):
+                            c_face = gr.Image(
+                                label="Keep this person’s face (optional)",
+                                type="filepath",
+                                height=220,
+                            )
+                            c_quality = gr.Radio(
+                                QUALITY_CHOICES,
+                                value=QUALITY_BEST,
+                                label="Quality",
+                            )
+                            c_aspect = gr.Radio(
+                                list(ASPECT_CHOICES),
+                                value="Portrait",
+                                label="Shape",
+                            )
+                            c_seed = gr.Number(
+                                value=-1,
+                                precision=0,
+                                label="Seed (−1 = surprise me)",
+                            )
                             c_steps = gr.Slider(
                                 0, 80, value=0, step=1, label="Steps (0 = auto)"
                             )
                             c_cfg = gr.Slider(
-                                0, 15, value=0, step=0.5, label="CFG scale (0 = auto)"
+                                0, 15, value=0, step=0.5, label="CFG (0 = auto)"
                             )
                             c_batch_count = gr.Slider(
                                 1, 4, value=1, step=1, label="How many images"
@@ -400,172 +641,195 @@ def build_ui() -> gr.Blocks:
                             c_neg_preset = gr.Dropdown(
                                 list(NEGATIVE_PRESET_CHOICES),
                                 value="Style default",
-                                label="Negative prompt preset",
+                                label="Avoid list",
                             )
                             c_neg_extra = gr.Textbox(
-                                label="Extra things to avoid",
+                                label="Also avoid",
                                 lines=2,
-                                placeholder="glasses, hat, background clutter…",
+                                placeholder="glasses, hat, clutter…",
                             )
                         with gr.Row():
-                            c_btn = gr.Button("Generate image", variant="primary")
-                            c_cancel = gr.Button("Cancel")
-                        c_upscale = gr.Button("Upscale result (4× HD)")
+                            c_btn = gr.Button(
+                                "Make image",
+                                variant="primary",
+                                elem_classes=["primary-btn"],
+                            )
+                            c_cancel = gr.Button("Stop")
+                        c_upscale = gr.Button("Make sharper (HD)")
                         c_status = gr.Markdown("")
-                    with gr.Column():
+                    with gr.Column(scale=6):
                         c_out = gr.Image(
-                            label="Selected result (for upscale)",
+                            label="Your image",
                             type="filepath",
-                            height=420,
+                            height=460,
                         )
                         c_run_gallery = gr.Gallery(
-                            label="This run (click to select)",
+                            label="This run — click to pick one",
                             columns=4,
-                            height=180,
+                            height=160,
                             object_fit="contain",
                             type="filepath",
                             preview=True,
                         )
 
-            with gr.Tab("Edit image (img2img)"):
-                with gr.Row():
-                    with gr.Column():
-                        e_img = gr.Image(label="Start from this image", type="filepath")
+            with gr.Tab("Same person"):
+                with gr.Row(equal_height=False):
+                    with gr.Column(scale=5):
+                        gr.Markdown(
+                            '<p class="hint"><b>Same person, new scenes.</b> Upload a clear face photo, then describe any '
+                            "pose, outfit, setting, or mood. Uses FaceID identity lock (Photo-real works best).</p>"
+                        )
+                        e_img = gr.Image(
+                            label="Face / person photo",
+                            type="filepath",
+                            height=280,
+                        )
                         e_desc = gr.Textbox(
-                            label="Describe the changes",
-                            lines=3,
-                            placeholder="Same pose but different outfit, softer lighting…",
+                            label="New scene for this person",
+                            lines=4,
+                            placeholder="standing on a rainy city street at night, leather jacket, neon lights…",
                         )
                         e_history = gr.Dropdown(
-                            label="Recent prompts",
+                            label="Reuse a recent description",
                             choices=list_prompt_choices("edit"),
                             value=None,
                             allow_custom_value=False,
                             interactive=True,
                         )
                         e_style = gr.Radio(
-                            STYLE_CHOICES,
-                            value="Anime / character art",
-                            label="Style",
+                            FACE_STYLE_CHOICES,
+                            value="Photo-real",
+                            label="Look",
                         )
-                        e_quality = gr.Radio(
-                            ["Fast", "High detail (slower)"],
-                            value="Fast",
-                            label="Quality",
-                        )
-                        e_aspect = gr.Radio(
-                            list(ASPECT_CHOICES),
-                            value="Portrait",
-                            label="Aspect ratio",
-                        )
-                        e_seed = gr.Number(
-                            value=-1,
-                            precision=0,
-                            label="Seed (−1 = random)",
-                        )
-                        e_strength = gr.Slider(
-                            0.2,
-                            0.95,
-                            value=0.55,
-                            step=0.05,
-                            label="Change strength (higher = more different)",
-                        )
-                        with gr.Accordion("Advanced", open=False):
+                        with gr.Accordion("More options", open=False):
+                            e_quality = gr.Radio(
+                                QUALITY_CHOICES,
+                                value=QUALITY_BEST,
+                                label="Quality",
+                            )
+                            e_aspect = gr.Radio(
+                                list(ASPECT_CHOICES),
+                                value="Portrait",
+                                label="Shape",
+                            )
+                            e_seed = gr.Number(
+                                value=-1,
+                                precision=0,
+                                label="Seed (−1 = surprise me)",
+                            )
                             e_steps = gr.Slider(
                                 0, 80, value=0, step=1, label="Steps (0 = auto)"
                             )
                             e_cfg = gr.Slider(
-                                0, 15, value=0, step=0.5, label="CFG scale (0 = auto)"
+                                0, 15, value=0, step=0.5, label="CFG (0 = auto)"
+                            )
+                            e_batch_count = gr.Slider(
+                                1, 4, value=1, step=1, label="How many images"
                             )
                             e_neg_preset = gr.Dropdown(
                                 list(NEGATIVE_PRESET_CHOICES),
                                 value="Style default",
-                                label="Negative prompt preset",
+                                label="Avoid list",
                             )
                             e_neg_extra = gr.Textbox(
-                                label="Extra things to avoid",
+                                label="Also avoid",
                                 lines=2,
-                                placeholder="glasses, hat, background clutter…",
+                                placeholder="glasses, hat, clutter…",
                             )
                         with gr.Row():
-                            e_btn = gr.Button("Edit image", variant="primary")
-                            e_cancel = gr.Button("Cancel")
-                        e_upscale = gr.Button("Upscale result (4× HD)")
+                            e_btn = gr.Button(
+                                "Generate same person",
+                                variant="primary",
+                                elem_classes=["primary-btn"],
+                            )
+                            e_cancel = gr.Button("Stop")
+                        e_upscale = gr.Button("Make sharper (HD)")
                         e_status = gr.Markdown("")
-                    with gr.Column():
-                        e_out = gr.Image(label="Result", type="filepath", height=480)
-
-            with gr.Tab("Image → Video (SVD)"):
-                gr.Markdown(
-                    "Turn a still image into a short clip. "
-                    "**Requires SVD model** — download **Video pack (SVD)** in Pinokio once."
-                )
-                with gr.Row():
-                    with gr.Column():
-                        v_img = gr.Image(label="Source image", type="filepath")
-                        v_frames = gr.Slider(14, 50, value=25, step=1, label="Frames")
-                        v_fps = gr.Slider(4, 12, value=6, step=1, label="FPS")
-                        v_motion = gr.Slider(
-                            50, 200, value=127, step=1, label="Motion amount"
-                        )
-                        v_seed = gr.Number(
-                            value=-1,
-                            precision=0,
-                            label="Seed (−1 = random)",
-                        )
-                        with gr.Row():
-                            v_btn = gr.Button("Create video", variant="primary")
-                            v_cancel = gr.Button("Cancel")
-                        v_status = gr.Markdown("")
-                    with gr.Column():
-                        v_out = gr.Video(label="Result", height=480)
-
-            with gr.Tab("Text/Image → Video (WAN)"):
-                gr.Markdown(
-                    "Generate video from a prompt, optionally guided by a reference image. "
-                    "**Requires WAN pack** — download **Video pack (WAN)** in Pinokio once (~15 GB)."
-                )
-                with gr.Row():
-                    with gr.Column():
-                        w_desc = gr.Textbox(
-                            label="Describe the video",
-                            lines=4,
-                            placeholder="A woman turning toward camera, hair moving, soft light…",
-                        )
-                        w_history = gr.Dropdown(
-                            label="Recent prompts",
-                            choices=list_prompt_choices("wan"),
-                            value=None,
-                            allow_custom_value=False,
-                            interactive=True,
-                        )
-                        w_img = gr.Image(
-                            label="Optional reference image (image-to-video)",
+                    with gr.Column(scale=6):
+                        e_out = gr.Image(label="Result", type="filepath", height=460)
+                        e_run_gallery = gr.Gallery(
+                            label="This run — click to pick one",
+                            columns=4,
+                            height=160,
+                            object_fit="contain",
                             type="filepath",
+                            preview=True,
                         )
-                        w_length = gr.Slider(33, 81, value=49, step=4, label="Frames")
-                        w_fps = gr.Slider(8, 24, value=16, step=1, label="FPS")
-                        w_quality = gr.Radio(
-                            ["Fast", "High detail (slower)"],
-                            value="Fast",
-                            label="Quality",
-                        )
-                        w_seed = gr.Number(
-                            value=-1,
-                            precision=0,
-                            label="Seed (−1 = random)",
-                        )
-                        with gr.Row():
-                            w_btn = gr.Button("Generate video", variant="primary")
-                            w_cancel = gr.Button("Cancel")
-                        w_status = gr.Markdown("")
-                    with gr.Column():
-                        w_out = gr.Video(label="Result", height=480)
 
-            with gr.Tab("Gallery"):
+            with gr.Tab("Make video"):
                 gr.Markdown(
-                    "Browse recent results from the output folder. "
-                    "Star favorites, filter to them, or send an image to Edit / SVD / WAN."
+                    '<p class="hint">Pick a photo to animate, or describe a scene. Video takes longer than images.</p>'
+                )
+                vid_mode = gr.Radio(
+                    VIDEO_MODES,
+                    value=VIDEO_FROM_PHOTO,
+                    label="How do you want to make it?",
+                )
+                with gr.Row():
+                    with gr.Column(scale=5):
+                        with gr.Group(visible=True) as photo_group:
+                            v_img = gr.Image(label="Your photo", type="filepath")
+                            v_motion = gr.Radio(
+                                MOTION_CHOICES,
+                                value="Normal",
+                                label="Motion",
+                            )
+                            v_seed = gr.Number(
+                                value=-1,
+                                precision=0,
+                                label="Seed (−1 = surprise me)",
+                            )
+                            with gr.Row():
+                                v_btn = gr.Button(
+                                    "Make clip",
+                                    variant="primary",
+                                    elem_classes=["primary-btn"],
+                                )
+                                v_cancel = gr.Button("Stop")
+                            v_status = gr.Markdown("")
+
+                        with gr.Group(visible=False) as words_group:
+                            w_desc = gr.Textbox(
+                                label="Describe the video",
+                                lines=4,
+                                placeholder="Hair moving in soft light, she turns toward the camera…",
+                            )
+                            w_history = gr.Dropdown(
+                                label="Reuse a recent description",
+                                choices=list_prompt_choices("wan"),
+                                value=None,
+                                allow_custom_value=False,
+                                interactive=True,
+                            )
+                            w_img = gr.Image(
+                                label="Optional guide photo",
+                                type="filepath",
+                            )
+                            w_quality = gr.Radio(
+                                QUALITY_CHOICES,
+                                value=QUALITY_BEST,
+                                label="Quality",
+                            )
+                            w_seed = gr.Number(
+                                value=-1,
+                                precision=0,
+                                label="Seed (−1 = surprise me)",
+                            )
+                            with gr.Row():
+                                w_btn = gr.Button(
+                                    "Make video",
+                                    variant="primary",
+                                    elem_classes=["primary-btn"],
+                                )
+                                w_cancel = gr.Button("Stop")
+                            w_status = gr.Markdown("")
+                    with gr.Column(scale=6):
+                        v_out = gr.Video(label="Your video", height=480)
+                        w_out = gr.Video(label="Your video", height=480, visible=False)
+
+            with gr.Tab("My gallery"):
+                gr.Markdown(
+                    '<p class="hint">Everything you’ve made. Star favorites or send one to Edit / Video.</p>'
                 )
                 with gr.Row():
                     g_filter = gr.Radio(
@@ -573,7 +837,7 @@ def build_ui() -> gr.Blocks:
                         value="All",
                         label="Show",
                     )
-                    g_refresh = gr.Button("Refresh gallery", variant="secondary")
+                    g_refresh = gr.Button("Refresh", variant="secondary")
                 g_status = gr.Markdown("")
                 with gr.Row():
                     with gr.Column(scale=2):
@@ -585,15 +849,11 @@ def build_ui() -> gr.Blocks:
                             preview=True,
                             type="filepath",
                         )
-                        g_selected = gr.Textbox(
-                            label="Selected image path",
-                            interactive=False,
-                        )
+                        g_selected = gr.Textbox(label="Selected", interactive=False)
                         with gr.Row():
-                            g_star = gr.Button("★ Star / unstar image")
-                            g_to_edit = gr.Button("Use in Edit")
-                            g_to_svd = gr.Button("Use in SVD video")
-                            g_to_wan = gr.Button("Use in WAN video")
+                            g_star = gr.Button("★ Favorite")
+                            g_to_edit = gr.Button("Same person")
+                            g_to_video = gr.Button("Make video from this")
                         g_action = gr.Markdown("")
                     with gr.Column(scale=1):
                         g_video_pick = gr.Dropdown(
@@ -602,32 +862,22 @@ def build_ui() -> gr.Blocks:
                             value=None,
                             interactive=True,
                         )
-                        g_video = gr.Video(label="Video preview", height=360)
-                        g_star_video = gr.Button("★ Star / unstar video")
+                        g_video = gr.Video(label="Preview", height=360)
+                        g_star_video = gr.Button("★ Favorite video")
                         g_video_map = gr.State({})
 
         gr.Examples(
             examples=[[p] for p in EXAMPLE_PROMPTS],
             inputs=[c_desc],
-            label="Example prompts (Create image tab)",
+            label="Try one of these",
         )
 
-        gr.Markdown(
+        gr.HTML(
             f"""
----
-**Output folder:** `{output_dir()}`
-
-**Styles:** Anime (Pony) · Illustration · Realistic (Juggernaut) · Flux Dev FP8
-
-**Controls:** Aspect, Seed (−1 = random), Upscale 4×, Gallery to reuse results.
-
-**Advanced:** Steps and CFG (0 = auto per style), batch up to 4, negative-prompt presets.
-
-**Reliability:** Progress while generating; **Cancel** stops the UI job and the ComfyUI engine.
-
-**History & favorites:** Recent prompts reload from the dropdowns; star items in Gallery (saved locally).
-
-**First run tips:** Image ~20–90s. Upscale ~5–20s. Video ~2–10 min. In Pinokio use **Open AI Creator**.
+            <div class="tips">
+              Images usually take under 2 minutes. Video can take several minutes.
+              Files save to <code>{output_dir()}</code>
+            </div>
             """
         )
 
@@ -636,6 +886,18 @@ def build_ui() -> gr.Blocks:
         c_history.change(apply_recent_prompt, [c_history], [c_desc])
         e_history.change(apply_recent_prompt, [e_history], [e_desc])
         w_history.change(apply_recent_prompt, [w_history], [w_desc])
+        vid_mode.change(
+            toggle_video_mode,
+            [vid_mode],
+            [photo_group, words_group],
+        ).then(
+            lambda mode: (
+                gr.update(visible=(mode or "").startswith(VIDEO_FROM_PHOTO)),
+                gr.update(visible=not (mode or "").startswith(VIDEO_FROM_PHOTO)),
+            ),
+            [vid_mode],
+            [v_out, w_out],
+        )
 
         c_event = c_btn.click(
             on_create,
@@ -650,6 +912,7 @@ def build_ui() -> gr.Blocks:
                 c_batch_count,
                 c_neg_preset,
                 c_neg_extra,
+                c_face,
             ],
             [c_out, c_run_gallery, c_status, c_history],
         ).then(refresh_gallery, [g_filter], gallery_outputs)
@@ -660,33 +923,36 @@ def build_ui() -> gr.Blocks:
             refresh_gallery, [g_filter], gallery_outputs
         )
         e_event = e_btn.click(
-            on_edit,
+            on_same_person,
             [
                 e_desc,
                 e_style,
                 e_quality,
                 e_img,
-                e_strength,
                 e_aspect,
                 e_seed,
                 e_steps,
                 e_cfg,
+                e_batch_count,
                 e_neg_preset,
                 e_neg_extra,
             ],
-            [e_out, e_status, e_history],
+            [e_out, e_run_gallery, e_status, e_history],
         ).then(refresh_gallery, [g_filter], gallery_outputs)
+        e_run_gallery.select(
+            on_select_batch_image, [e_run_gallery], [e_out, e_status]
+        )
         e_up_event = e_upscale.click(on_upscale, [e_out], [e_out, e_status]).then(
             refresh_gallery, [g_filter], gallery_outputs
         )
         v_event = v_btn.click(
-            on_img2video_svd,
-            [v_img, v_frames, v_fps, v_motion, v_seed],
+            on_make_video_photo,
+            [v_img, v_motion, v_seed],
             [v_out, v_status],
         ).then(refresh_gallery, [g_filter], gallery_outputs)
         w_event = w_btn.click(
-            on_video_wan,
-            [w_desc, w_img, w_length, w_fps, w_quality, w_seed],
+            on_make_video_words,
+            [w_desc, w_img, w_quality, w_seed],
             [w_out, w_status, w_history],
         ).then(refresh_gallery, [g_filter], gallery_outputs)
 
@@ -712,8 +978,16 @@ def build_ui() -> gr.Blocks:
             [g_action, *gallery_outputs],
         )
         g_to_edit.click(send_to_edit, [g_selected], [e_img, g_action])
-        g_to_svd.click(send_to_svd, [g_selected], [v_img, g_action])
-        g_to_wan.click(send_to_wan, [g_selected], [w_img, g_action])
+        g_to_video.click(
+            send_to_video, [g_selected], [v_img, vid_mode, g_action]
+        ).then(
+            toggle_video_mode,
+            [vid_mode],
+            [photo_group, words_group],
+        ).then(
+            lambda: (gr.update(visible=True), gr.update(visible=False)),
+            outputs=[v_out, w_out],
+        )
 
     return demo
 
@@ -733,5 +1007,6 @@ if __name__ == "__main__":
         server_port=args.port,
         share=False,
         show_error=True,
-        theme=gr.themes.Soft(primary_hue="violet"),
+        theme=_theme(),
+        css=APP_CSS,
     )
