@@ -1,0 +1,34 @@
+{
+  "run": [
+    {
+      "method": "fs.download",
+      "params": {
+        "uri": "https://huggingface.co/h94/IP-Adapter-FaceID/resolve/main/ip-adapter-faceid-plusv2_sdxl.bin",
+        "dir": "app/models/ipadapter"
+      }
+    },
+    {
+      "method": "fs.download",
+      "params": {
+        "uri": "https://huggingface.co/h94/IP-Adapter-FaceID/resolve/main/ip-adapter-faceid-plusv2_sdxl_lora.safetensors",
+        "dir": "app/models/loras"
+      }
+    },
+    {
+      "method": "fs.download",
+      "params": {
+        "uri": "https://huggingface.co/h94/IP-Adapter/resolve/main/models/image_encoder/model.safetensors",
+        "dir": "app/models/clip_vision",
+        "filename": "clip_vision_h.safetensors"
+      }
+    },
+    {
+      "method": "shell.run",
+      "params": {
+        "venv": "env",
+        "path": "app",
+        "message": "pip install insightface==0.7.3 onnxruntime"
+      }
+    }
+  ]
+}
