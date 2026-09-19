@@ -50,11 +50,12 @@ def list_prompt_choices(kind: str | None = None) -> list[str]:
         if not isinstance(item, dict):
             continue
         item_kind = item.get("kind") or "create"
-        if kind == "wan":
-            if item_kind != "wan":
+        video_kinds = ("wan", "extend")
+        if kind in video_kinds:
+            if item_kind != kind:
                 continue
         elif kind in ("create", "edit"):
-            if item_kind == "wan":
+            if item_kind in video_kinds:
                 continue
         text = (item.get("text") or "").strip()
         if len(text) < 3 or text in seen:

@@ -58,6 +58,11 @@ One-click Pinokio launcher for a local, uncensored image generation stack built 
 
 ## Gradio UI notes
 
+- Extend video (`comfy_client.extend_video`, `video_tools.py`): PyAV probes the
+  clip, saves its last frame into `app/input`, runs the WAN i2v workflow (size
+  chosen from the source aspect, 4k+1 frames, 16 fps) or the SVD workflow from
+  that frame, then re-encodes original + new footage into one H.264 MP4 at the
+  source size and frame rate (new footage re-timed by nearest frame; no audio)
 - `create-images.js` is self-healing: `git pull --ff-only` on this repo and on
   ComfyUI (both non-fatal), a probe of `app/env`'s interpreter that deletes a
   dead venv so it is recreated, `uv pip install` of ComfyUI's and the UI's
