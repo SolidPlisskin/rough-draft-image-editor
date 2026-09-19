@@ -321,6 +321,26 @@ def on_extend_video(
         _handle_error(err)
 
 
+def on_extend_again(
+    previous_result,
+    description: str,
+    engine: str,
+    added_frames: float,
+    quality: str,
+    seed: float,
+    motion: float,
+    progress=gr.Progress(),
+):
+    """Feed the last extended video back in and continue it once more."""
+    path = _video_path(previous_result)
+    if not path:
+        raise gr.Error("Extend a video first; then this button continues the result.")
+    combined, new_clip, msg, history = on_extend_video(
+        path, description, engine, added_frames, quality, seed, motion, progress=progress
+    )
+    return combined, new_clip, msg, history, combined
+
+
 def _style_map(choice: str) -> str:
     key = (choice or "").lower()
     if key.startswith("flux"):
@@ -751,6 +771,7 @@ def build_ui() -> gr.Blocks:
                         x_status = gr.Markdown("")
                     with gr.Column():
                         x_out = gr.Video(label="Extended video (original + new)", height=420)
+                        x_again = gr.Button("Extend again (continue this result)")
                         x_new = gr.Video(label="New footage only", height=220)
 
             with gr.Tab("Gallery"):
@@ -891,7 +912,15 @@ def build_ui() -> gr.Blocks:
             [x_out, x_new, x_status, x_history],
         ).then(refresh_gallery, [g_filter], gallery_outputs)
 
-        cancelable = [c_event, c_up_event, e_event, e_up_event, v_event, w_event, x_event]
+        x_again_event = x_again.click(
+            on_extend_again,
+            [x_out, x_desc, x_engine, x_added, x_quality, x_seed, x_motion],
+            [x_out, x_new, x_status, x_history, x_video],
+        ).then(refresh_gallery, [g_filter], gallery_outputs)
+
+        cancelable = [
+            c_event, c_up_event, e_event, e_up_event, v_event, w_event, x_event, x_again_event
+        ]
         c_cancel.click(on_cancel, outputs=[c_status], cancels=cancelable)
         e_cancel.click(on_cancel, outputs=[e_status], cancels=cancelable)
         v_cancel.click(on_cancel, outputs=[v_status], cancels=cancelable)
