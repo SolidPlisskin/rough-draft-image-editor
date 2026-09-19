@@ -16,7 +16,7 @@ module.exports = {
       params: {
         path: "app/custom_nodes",
         message: [
-          "git clone https://github.com/ltdrdata/ComfyUI-Manager",
+          "git clone https://github.com/Comfy-Org/ComfyUI-Manager",
           "git clone https://github.com/ltdrdata/ComfyUI-Impact-Pack",
           "git clone https://github.com/Fannovel16/comfyui_controlnet_aux",
           "git clone https://github.com/cubiq/ComfyUI_IPAdapter_plus"

@@ -65,13 +65,15 @@ Saved files go to the app `output` folder (Pinokio → **View my saved images**)
 
 | Problem | Fix |
 |---------|-----|
+| Stopped working after a Pinokio update (nothing launches, "python not found", venv errors) | Advanced → **Repair app**. Rebuilds both Python environments, keeps models and images |
+| Image finishes but never appears / error mentions "gradio cache dir" or "allowed_paths" | Advanced → **Update app**, then reopen **Open AI Creator** |
 | Download starter pack still showing | Finish the ~7 GB download |
 | Page stuck on Starting… | Wait 2 min, refresh; or reopen from Pinokio |
 | Purple / broken colors | Re-run **Download starter pack** (includes VAE) |
 | Upscale fails | Advanced → download **HD upscaler** |
 | Flux / Realistic missing | Advanced → download that model |
 | Cancel does nothing / stuck generating | Click **Cancel** again, then reopen **Open AI Creator** |
-| App broken | Advanced → **Reset everything**, then Set up again |
+| App broken | Advanced → **Repair app** first; if that does not help, **Reset everything**, then Set up again |
 | Full node editor | Advanced → **Expert mode (full ComfyUI)** |
 
 ---
@@ -79,6 +81,8 @@ Saved files go to the app `output` folder (Pinokio → **View my saved images**)
 ## Requirements
 
 - Windows + **NVIDIA GPU** (8 GB+ VRAM; 12 GB+ nicer for XL / Flux / video)
+- NVIDIA driver **580 or newer** gets the CUDA 13 PyTorch build ComfyUI recommends for RTX 20-series and newer; older drivers automatically get the CUDA 12.8 build
+- **Pinokio 8** or newer recommended (the app was written for 7.x; on 8.x use **Repair app** once if it stops launching)
 - ~20 GB free for base; more for Flux + video packs
 - [Pinokio](https://pinokio.computer)
 

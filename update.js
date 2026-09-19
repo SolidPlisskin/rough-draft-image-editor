@@ -44,6 +44,16 @@ module.exports = {
       ]
     }
   }, {
+    // Re-pin PyTorch after ComfyUI's requirements may have pulled a different build.
+    method: "script.start",
+    params: {
+      uri: "torch.js",
+      params: {
+        venv: "env",
+        path: "app"
+      }
+    }
+  }, {
     method: "shell.run",
     params: {
       venv: "ui-env",

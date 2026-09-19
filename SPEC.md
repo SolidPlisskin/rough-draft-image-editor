@@ -36,10 +36,30 @@ One-click Pinokio launcher for a local, uncensored image generation stack built 
 ## Install flow
 
 1. Clone ComfyUI into `app/`
-2. Install Python deps + PyTorch (AI bundle)
+2. Install Python deps + PyTorch (AI bundle). `torch.js` pins torch 2.11.0 /
+   torchvision 0.26.0 / torchaudio 2.11.0; NVIDIA gets CUDA 13.0 wheels when the
+   driver is >= 580, CUDA 12.8 otherwise
 3. Clone custom nodes
 4. Link shared model drive folders
 5. Copy starter workflows into `app/user/default/workflows/`
+6. Create the Gradio UI venv (`simple-ui/ui-env`)
+
+## Maintenance scripts
+
+- `update.js` — pulls this repo, ComfyUI and custom nodes, reinstalls
+  requirements, then re-pins PyTorch
+- `repair.js` — deletes and rebuilds both venvs (`app/env`, `simple-ui/ui-env`)
+  without touching ComfyUI or downloaded models
+- `reset.js` — deletes `app/`, `simple-ui/ui-env` and the models-ready marker
+
+## Gradio UI notes
+
+- Results are written by ComfyUI to `app/output`, outside the UI's working
+  directory. Gradio 5+ only serves files from the CWD, the temp dir, or
+  `allowed_paths`, so `app.py` passes the output and input folders there
+- Gradio hands cached copies of displayed files back to event handlers; the UI
+  maps them to the originals in `app/output` by file name before starring or
+  reusing them
 
 ## Start flow
 
