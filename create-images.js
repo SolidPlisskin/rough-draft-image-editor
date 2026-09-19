@@ -8,6 +8,19 @@ module.exports = {
   daemon: true,
   run: [
     {
+      // Self-update: pull the latest launcher + UI from GitHub on every launch.
+      // Fast-forward only, and never fatal: offline or locally edited checkouts
+      // just print a note and start with what is already here. A pulled change
+      // to this very file takes effect on the next launch. ComfyUI itself is
+      // deliberately NOT updated here (that stays behind Advanced → Update app).
+      method: "shell.run",
+      params: {
+        message: [
+          "git pull --ff-only || echo Auto-update skipped (offline or local changes). Starting anyway."
+        ]
+      }
+    },
+    {
       method: "shell.run",
       params: {
         venv: "env",

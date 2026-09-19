@@ -55,8 +55,8 @@ One-click Pinokio launcher for a local, uncensored image generation stack built 
 
 ## Gradio UI notes
 
-- `create-images.js` reinstalls the UI requirements on every launch (a no-op
-  when satisfied), runs `python ../simple-ui/app.py` from `app/`, and only
+- `create-images.js` first runs `git pull --ff-only` on this repo (non-fatal), then
+  reinstalls the UI requirements on every launch (a no-op when satisfied), runs `python ../simple-ui/app.py` from `app/`, and only
   accepts a full `host:port` address from either process's output
 - `app.py` takes its port from `GRADIO_PORT`; if that port is busy it falls
   back to letting Gradio pick a free one

@@ -28,7 +28,7 @@ Optional extras (Advanced → Download extra models):
 
 ## Every time
 
-1. Pinokio → **AI Creator** → **Open AI Creator**
+1. Pinokio → **AI Creator** → **Open AI Creator** (this also pulls the latest app fixes from GitHub automatically; ComfyUI itself only updates via Advanced → Update app)
 2. Pick a tab:
    - **Create image** — text → image (batch up to 4)
    - **Edit image** — img2img
