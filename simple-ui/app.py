@@ -14,6 +14,7 @@ from comfy_client import (
     generate_img2img,
     generate_video_wan,
     get_capabilities,
+    input_dir,
     list_checkpoints,
     list_recent_images,
     list_recent_videos,
@@ -276,6 +277,47 @@ def on_pick_video(name: str, video_map: dict):
     return video_map.get(name)
 
 
+def _gallery_item_path(item) -> str | None:
+    """Extract a file path from a gr.Gallery item (str, tuple, or dict)."""
+    if item is None:
+        return None
+    if isinstance(item, dict):
+        inner = item.get("image") or item.get("video") or item.get("path")
+        if isinstance(inner, dict):
+            inner = inner.get("path")
+        return str(inner) if inner else None
+    if isinstance(item, (list, tuple)):
+        return _gallery_item_path(item[0]) if item else None
+    return str(item)
+
+
+def resolve_output_path(path: str | Path | None) -> str | None:
+    """Map a file Gradio handed us back to the real file in the output folder.
+
+    Gradio copies every file it displays into its own cache directory and, on
+    the next event, passes that *cached* path back to us. Favorites and the
+    "Use in …" buttons must operate on the original file under app/output,
+    so match the cached copy back to it by file name.
+    """
+    if not path:
+        return None
+    candidate = Path(str(path))
+    root = output_dir().resolve()
+    try:
+        candidate.resolve().relative_to(root)
+        return str(candidate)
+    except (ValueError, OSError):
+        pass
+    if root.exists():
+        matches = [
+            p for p in root.rglob(candidate.name) if p.is_file() and p.stat().st_size > 0
+        ]
+        if matches:
+            matches.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+            return str(matches[0])
+    return str(candidate)
+
+
 def on_select_gallery_image(gallery, evt: gr.SelectData):
     if gallery is None or evt is None:
         return None, "Select an image in the gallery."
@@ -283,8 +325,9 @@ def on_select_gallery_image(gallery, evt: gr.SelectData):
         item = gallery[evt.index]
     except (IndexError, TypeError):
         return None, "Select an image in the gallery."
-    path = item[0] if isinstance(item, (list, tuple)) else item
-    path = str(path)
+    path = resolve_output_path(_gallery_item_path(item))
+    if not path:
+        return None, "Select an image in the gallery."
     star = "★" if is_favorite(path) else "☆"
     return path, f"{star} Selected `{Path(path).name}`"
 
@@ -297,6 +340,7 @@ def on_select_batch_image(gallery, evt: gr.SelectData):
 
 
 def require_selected_image(path: str | None) -> str:
+    path = resolve_output_path(path)
     if not path:
         raise gr.Error("Select an image in the gallery first.")
     if not Path(path).exists():
@@ -727,6 +771,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     output_dir().mkdir(parents=True, exist_ok=True)
+    input_dir().mkdir(parents=True, exist_ok=True)
     app = build_ui()
     app.launch(
         server_name=args.host,
@@ -734,4 +779,8 @@ if __name__ == "__main__":
         share=False,
         show_error=True,
         theme=gr.themes.Soft(primary_hue="violet"),
+        # Results are written by ComfyUI into ../app/output (outside this
+        # process's working directory). Gradio 5+ refuses to serve files from
+        # outside the CWD / temp dir unless they are explicitly allowed here.
+        allowed_paths=[str(output_dir()), str(input_dir())],
     )

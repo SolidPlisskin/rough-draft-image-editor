@@ -5,7 +5,10 @@ module.exports = {
   icon: "icon.png",
   menu: async (kernel, info) => {
     let installed = info.exists("app/env")
-    let modelsReady = info.exists(".models-ready")
+    // The starter model lives on Pinokio's shared model drive, so it survives a
+    // reset. Detect it directly instead of trusting only the marker file.
+    let modelsReady = info.exists(".models-ready") ||
+      info.exists("app/models/checkpoints/ponyDiffusionV6XL_v6StartWithThisOne.safetensors")
     let setupComplete = info.exists("app/user/default/workflows/pony-txt2img.json")
     let running = {
       setup: info.running("setup-everything.js"),
@@ -14,6 +17,7 @@ module.exports = {
       download: info.running("download-starter-pack.js"),
       update: info.running("update.js"),
       reset: info.running("reset.js"),
+      repair: info.running("repair.js"),
       finish: info.running("finish-install.js")
     }
 
@@ -41,6 +45,11 @@ module.exports = {
       text: "Update app",
       href: "update.js"
     }, {
+      icon: "fa-solid fa-kit-medical",
+      text: "Repair app (reinstall Python packages, keep models)",
+      href: "repair.js",
+      confirm: "Rebuilds the two Python environments. Use this if the app stopped launching after a Pinokio update. Models and saved images are kept. Takes 5–15 minutes."
+    }, {
       icon: "fa-regular fa-circle-xmark",
       text: "Reset everything",
       href: "reset.js",
@@ -53,6 +62,15 @@ module.exports = {
         icon: "fa-solid fa-hourglass-half",
         text: "Setting up (first time only)…",
         href: running.setup ? "setup-everything.js" : "install.js"
+      }]
+    }
+
+    if (running.repair) {
+      return [{
+        default: true,
+        icon: "fa-solid fa-kit-medical",
+        text: "Repairing (reinstalling Python packages)…",
+        href: "repair.js"
       }]
     }
 
