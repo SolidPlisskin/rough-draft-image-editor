@@ -1,5 +1,5 @@
-// Rebuilds both Python environments without touching ComfyUI itself or any
-// downloaded models. Use this when the app stops launching after a Pinokio
+// Rebuilds the Python environment without touching ComfyUI itself or any
+// downloaded models (also clears the legacy simple-ui/ui-env). Use this when the app stops launching after a Pinokio
 // update (e.g. the Pinokio 8 Miniconda → Miniforge migration invalidates the
 // base Python that existing venvs point at) or after a broken dependency install.
 module.exports = {
@@ -59,10 +59,10 @@ module.exports = {
     {
       method: "shell.run",
       params: {
-        venv: "ui-env",
-        path: "simple-ui",
+        venv: "env",
+        path: "app",
         message: [
-          "uv pip install -r requirements.txt"
+          "uv pip install -r ../simple-ui/requirements.txt"
         ]
       }
     }

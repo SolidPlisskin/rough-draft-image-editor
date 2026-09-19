@@ -65,7 +65,7 @@ Saved files go to the app `output` folder (Pinokio → **View my saved images**)
 
 | Problem | Fix |
 |---------|-----|
-| Stopped working after a Pinokio update (nothing launches, "python not found", venv errors) | Advanced → **Repair app**. Rebuilds both Python environments, keeps models and images |
+| Stopped working after a Pinokio update (nothing launches, "python not found", venv errors) | Advanced → **Update app**, then reopen. If it still fails, Advanced → **Repair app** (rebuilds the Python environment, keeps models and images) |
 | Image finishes but never appears / error mentions "gradio cache dir" or "allowed_paths" | Advanced → **Update app**, then reopen **Open AI Creator** |
 | Download starter pack still showing | Finish the ~7 GB download |
 | Page stuck on Starting… | Wait 2 min, refresh; or reopen from Pinokio |

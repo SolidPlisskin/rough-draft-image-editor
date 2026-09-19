@@ -762,20 +762,26 @@ def build_ui() -> gr.Blocks:
     return demo
 
 
+def _env_port() -> int | None:
+    """Port requested by the launcher via GRADIO_PORT; None if unset/invalid."""
+    raw = (os.environ.get("GRADIO_PORT") or "").strip()
+    if not raw.isdigit():
+        return None
+    port = int(raw)
+    return port if 1 <= port <= 65535 else None
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--port", type=int, default=int(os.environ.get("GRADIO_PORT", "7860"))
-    )
+    parser.add_argument("--port", type=int, default=_env_port())
     parser.add_argument("--host", default="127.0.0.1")
     args = parser.parse_args()
 
     output_dir().mkdir(parents=True, exist_ok=True)
     input_dir().mkdir(parents=True, exist_ok=True)
     app = build_ui()
-    app.launch(
+    launch_kwargs = dict(
         server_name=args.host,
-        server_port=args.port,
         share=False,
         show_error=True,
         theme=gr.themes.Soft(primary_hue="violet"),
@@ -784,3 +790,14 @@ if __name__ == "__main__":
         # outside the CWD / temp dir unless they are explicitly allowed here.
         allowed_paths=[str(output_dir()), str(input_dir())],
     )
+    try:
+        # Preferred: the port the launcher picked (or Gradio's default search
+        # starting at 7860 when none was given).
+        app.launch(server_port=args.port, **launch_kwargs)
+    except OSError as err:
+        if args.port is None:
+            raise
+        # The requested port was taken. Let Gradio find a free one instead of
+        # dying; the launcher reads the final address from stdout either way.
+        print(f"Port {args.port} unavailable ({err}); picking a free port.", flush=True)
+        app.launch(server_port=None, **launch_kwargs)

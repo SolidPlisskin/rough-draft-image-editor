@@ -118,13 +118,12 @@ module.exports = {
       }
     },
     {
-      when: "{{!exists('simple-ui/ui-env')}}",
       method: "shell.run",
       params: {
-        venv: "ui-env",
-        path: "simple-ui",
+        venv: "env",
+        path: "app",
         message: [
-          "uv pip install -r requirements.txt"
+          "uv pip install -r ../simple-ui/requirements.txt"
         ]
       }
     }

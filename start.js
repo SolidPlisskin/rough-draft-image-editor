@@ -16,7 +16,7 @@ module.exports = {
           "{{platform === 'win32' && gpu === 'amd' ? 'python main.py --directml' : (gpu === 'nvidia' ? 'python main.py --gpu-only' : 'python main.py')}}"
         ],
         on: [{
-          event: "/(http:\\/\\/[0-9.:]+)/",
+          event: "/(http:\\/\\/[0-9.]+:[0-9]+)/",
           done: true
         }, {
           event: "/errno/i",
