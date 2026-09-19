@@ -28,7 +28,7 @@ Optional extras (Advanced → Download extra models):
 
 ## Every time
 
-1. Pinokio → **AI Creator** → **Open AI Creator** (this also pulls the latest app fixes from GitHub automatically; ComfyUI itself only updates via Advanced → Update app)
+1. Pinokio → **AI Creator** → **Open AI Creator**. Each launch updates and repairs itself: pulls the latest AI Creator and ComfyUI, rebuilds a dead Python environment, reinstalls missing packages, and re-pins PyTorch if a CPU-only build sneaked in. A launch after months away can take 5–15 minutes; a normal one 30–90 seconds
 2. Pick a tab:
    - **Create image** — text → image (batch up to 4)
    - **Edit image** — img2img
@@ -65,7 +65,8 @@ Saved files go to the app `output` folder (Pinokio → **View my saved images**)
 
 | Problem | Fix |
 |---------|-----|
-| Stopped working after a Pinokio update (nothing launches, "python not found", venv errors) | Advanced → **Update app**, then reopen. If it still fails, Advanced → **Repair app** (rebuilds the Python environment, keeps models and images) |
+| Stopped working after a Pinokio update (nothing launches, "python not found", venv errors) | Just click **Open AI Creator** again; the launcher detects a dead environment and rebuilds it. If it still fails, Advanced → **Repair app** |
+| Status block says the engine is running on the CPU | Advanced → **Repair app**; if it persists, update the NVIDIA driver (580+ recommended) |
 | Image finishes but never appears / error mentions "gradio cache dir" or "allowed_paths" | Advanced → **Update app**, then reopen **Open AI Creator** |
 | Download starter pack still showing | Finish the ~7 GB download |
 | Page stuck on Starting… | Wait 2 min, refresh; or reopen from Pinokio |

@@ -65,6 +65,22 @@ module.exports = {
           "uv pip install -r ../simple-ui/requirements.txt"
         ]
       }
+    },
+    {
+      method: "shell.run",
+      params: {
+        venv: "env",
+        path: "app",
+        env: {
+          AI_CREATOR_GPU: "{{gpu}}",
+          AI_CREATOR_PLATFORM: "{{platform}}",
+          AI_CREATOR_ARCH: "{{arch}}",
+          AI_CREATOR_GPU_DRIVER: "{{typeof gpu_driver !== 'undefined' && gpu_driver ? gpu_driver : ''}}"
+        },
+        message: [
+          "python ../simple-ui/doctor.py"
+        ]
+      }
     }
   ]
 }
