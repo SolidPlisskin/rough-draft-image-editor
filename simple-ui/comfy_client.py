@@ -1,4 +1,5 @@
 import json
+import re
 import shutil
 import time
 import uuid
@@ -1238,7 +1239,9 @@ def extend_video(
 
     if progress is not None:
         progress(0.97, desc="Joining the clips…")
-    stem = Path(video_path).stem[:40]
+    # keep chained extensions readable: drop our own prefix/timestamp from the stem
+    stem = re.sub(r"^simple_ui_extended_", "", Path(video_path).stem)
+    stem = re.sub(r"_\d{9,}$", "", stem)[:40] or "video"
     combined = output_dir() / f"simple_ui_extended_{stem}_{int(time.time())}.mp4"
     concat_videos(video_path, new_clip, combined, fps=info.fps, second_fps=gen_fps)
     final = probe_video(combined)
