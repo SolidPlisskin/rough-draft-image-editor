@@ -134,6 +134,36 @@ def wait_for_server(timeout_seconds: int = 180) -> None:
     )
 
 
+def engine_info(timeout_seconds: float = 3.0) -> dict | None:
+    """Summarise what the engine is running on (from ComfyUI's /system_stats)."""
+    try:
+        with urllib.request.urlopen(
+            f"{comfy_url()}/system_stats", timeout=timeout_seconds
+        ) as resp:
+            data = json.load(resp)
+    except (urllib.error.URLError, TimeoutError, ConnectionError, ValueError, OSError):
+        return None
+    system = data.get("system") or {}
+    devices = []
+    for dev in data.get("devices") or []:
+        if not isinstance(dev, dict):
+            continue
+        vram = dev.get("vram_total") or 0
+        devices.append(
+            {
+                "name": str(dev.get("name") or dev.get("type") or "device"),
+                "type": str(dev.get("type") or ""),
+                "vram_gb": round(vram / (1024**3), 1) if vram else None,
+            }
+        )
+    return {
+        "comfyui": system.get("comfyui_version"),
+        "torch": system.get("pytorch_version"),
+        "python": system.get("python_version", "").split()[0] if system.get("python_version") else None,
+        "devices": devices,
+    }
+
+
 def engine_reachable(timeout_seconds: float = 3.0) -> bool:
     try:
         with urllib.request.urlopen(

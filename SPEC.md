@@ -47,6 +47,9 @@ One-click Pinokio launcher for a local, uncensored image generation stack built 
 
 ## Maintenance scripts
 
+- `simple-ui/doctor.py` — environment self-check/self-repair run at every
+  launch and at the end of `repair.js`; keep its PyTorch pins in sync with
+  `torch.js`
 - `update.js` — pulls this repo, ComfyUI and custom nodes, reinstalls
   requirements, then re-pins PyTorch
 - `repair.js` — deletes and rebuilds `app/env` (and clears the legacy
@@ -55,8 +58,12 @@ One-click Pinokio launcher for a local, uncensored image generation stack built 
 
 ## Gradio UI notes
 
-- `create-images.js` first runs `git pull --ff-only` on this repo (non-fatal), then
-  reinstalls the UI requirements on every launch (a no-op when satisfied), runs `python ../simple-ui/app.py` from `app/`, and only
+- `create-images.js` is self-healing: `git pull --ff-only` on this repo and on
+  ComfyUI (both non-fatal), a probe of `app/env`'s interpreter that deletes a
+  dead venv so it is recreated, `uv pip install` of ComfyUI's and the UI's
+  requirements (no-op when satisfied), then `simple-ui/doctor.py` which verifies
+  PyTorch matches the machine (CUDA/DirectML/ROCm), gradio 6.x imports and the
+  custom nodes' dependencies exist, repairing via `uv pip install`. It then runs `python ../simple-ui/app.py` from `app/`, and only
   accepts a full `host:port` address from either process's output
 - `app.py` takes its port from `GRADIO_PORT`; if that port is busy it falls
   back to letting Gradio pick a free one

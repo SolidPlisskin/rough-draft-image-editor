@@ -1,5 +1,6 @@
 import argparse
 import os
+import subprocess
 import urllib.error
 from pathlib import Path
 
@@ -8,6 +9,7 @@ import gradio as gr
 from comfy_client import (
     ASPECT_CHOICES,
     NEGATIVE_PRESET_CHOICES,
+    engine_info,
     engine_reachable,
     generate_image,
     generate_image_to_video_svd,
@@ -63,6 +65,45 @@ def on_cancel():
     )
 
 
+def build_stamp() -> str:
+    """Short git id + date of the AI Creator checkout, for the status block."""
+    try:
+        out = subprocess.run(
+            ["git", "log", "-1", "--format=%h %cs"],
+            cwd=str(Path(__file__).resolve().parents[1]),
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        stamp = out.stdout.strip()
+        return stamp if out.returncode == 0 and stamp else "unknown"
+    except (OSError, subprocess.SubprocessError):
+        return "unknown"
+
+
+def _engine_line() -> str:
+    info = engine_info()
+    if not info:
+        return ""
+    parts = []
+    if info.get("comfyui"):
+        parts.append(f"ComfyUI {info['comfyui']}")
+    if info.get("torch"):
+        parts.append(f"torch {info['torch']}")
+    devs = info.get("devices") or []
+    if devs:
+        d = devs[0]
+        vram = f" ({d['vram_gb']} GB)" if d.get("vram_gb") else ""
+        parts.append(f"{d['name']}{vram}")
+    line = "- Engine: " + " · ".join(parts) if parts else ""
+    if devs and all(d.get("type") == "cpu" for d in devs):
+        line += (
+            "\n- ⚠️ **The engine is running on the CPU.** Generation will be extremely slow. "
+            "Close this, then in Pinokio run Advanced → **Repair app**."
+        )
+    return line
+
+
 def _status_message() -> str:
     caps = get_capabilities()
     try:
@@ -71,7 +112,7 @@ def _status_message() -> str:
         if not models:
             return "**Setup needed.** In Pinokio click **Download starter pack**."
         lines = [
-            f"**Ready** — {len(models)} image model(s) loaded.",
+            f"**Ready** — {len(models)} image model(s) loaded. AI Creator build `{build_stamp()}`.",
             f"- Anime / character: {'yes' if caps['image'] else 'download starter pack'}",
             f"- Illustration: {'yes' if caps.get('illustration') else 'download Illustration model'}",
             f"- Realistic / photo: {'yes' if caps.get('realistic') else 'download Realistic model'}",
@@ -80,6 +121,9 @@ def _status_message() -> str:
             f"- Image → Video (SVD): {'yes' if caps['svd_video'] else 'download SVD video pack'}",
             f"- Text/Image → Video (WAN): {'yes' if caps['wan_video'] else 'download WAN video pack'}",
         ]
+        engine = _engine_line()
+        if engine:
+            lines.append(engine)
         return "\n".join(lines)
     except Exception:
         return "**Starting…** If this stays more than 2 minutes, restart from Pinokio."
