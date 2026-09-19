@@ -33,6 +33,7 @@ Optional extras (Advanced → Download extra models):
    - **Create image** — text → image (batch up to 4)
    - **Edit image** — img2img
    - **Image → Video (SVD)** / **Text/Image → Video (WAN)** — seeds supported
+   - **Extend video** — make any clip longer: continues from its last frame (WAN follows your description of what happens next, SVD just adds motion) and joins the new footage onto the original. Pick a clip in the Gallery and click **Use in Extend video**, or upload one
    - **Gallery** — browse past results; send an image to Edit / SVD / WAN
 3. Choose **style**, **aspect** (Portrait / Square / Landscape), **seed** (−1 = random)
 4. Optional **Advanced**: steps, CFG, batch count, negative-prompt presets
@@ -72,6 +73,8 @@ Saved files go to the app `output` folder (Pinokio → **View my saved images**)
 | Page stuck on Starting… | Wait 2 min, refresh; or reopen from Pinokio |
 | Purple / broken colors | Re-run **Download starter pack** (includes VAE) |
 | Upscale fails | Advanced → download **HD upscaler** |
+| Extend video says a model is missing | Download the WAN pack (for prompt-guided) or the SVD pack (motion only) under Advanced |
+| Extended video has no sound | Expected: the continuation is silent, so audio is not carried over |
 | Flux / Realistic missing | Advanced → download that model |
 | Cancel does nothing / stuck generating | Click **Cancel** again, then reopen **Open AI Creator** |
 | App broken | Advanced → **Repair app** first; if that does not help, **Reset everything**, then Set up again |

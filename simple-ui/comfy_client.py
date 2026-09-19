@@ -1146,3 +1146,104 @@ def generate_video_wan(
     )
     paths = run_workflow(workflow, timeout_seconds=1800, progress=progress)
     return paths[0], f"Video saved to {paths[0].name} (seed {resolved})"
+
+
+# ----------------------------------------------------------------------------- extend
+
+
+EXTEND_DEFAULT_PROMPT = (
+    "the scene continues naturally, same subject, same setting, same lighting, "
+    "smooth realistic motion, consistent style"
+)
+
+
+def wan_size_for_aspect(aspect: str, quality: str) -> tuple[int, int]:
+    """WAN 2.1 480p-friendly sizes (multiples of 16) matching a source aspect."""
+    high = quality == "High detail (slower)"
+    key = (aspect or "Square").lower()
+    if key.startswith("land"):
+        return (832, 480) if high else (640, 384)
+    if key.startswith("port"):
+        return (480, 832) if high else (384, 640)
+    return (624, 624) if high else (512, 512)
+
+
+def extend_video(
+    video_path: str,
+    description: str = "",
+    engine: str = "WAN (prompt-guided)",
+    added_frames: int = 49,
+    quality: str = "Fast",
+    seed: int | None = -1,
+    motion: int = 127,
+    progress=None,
+) -> tuple[Path, Path, str]:
+    """Continue an existing clip from its last frame and append the result.
+
+    Returns (combined_video, new_clip_only, message).
+    """
+    from video_tools import concat_videos, extract_last_frame, probe_video
+
+    if not video_path or not Path(video_path).exists():
+        raise RuntimeError("Upload a video (or pick one in the Gallery) first.")
+    use_wan = (engine or "").lower().startswith("wan")
+    caps = get_capabilities()
+    if use_wan and not caps["wan_video"]:
+        raise RuntimeError(
+            "WAN video models not installed. In Pinokio click Download video pack (WAN)."
+        )
+    if not use_wan and not caps["svd_video"]:
+        raise RuntimeError(
+            "Video model not installed. In Pinokio click Download video pack (SVD)."
+        )
+
+    if progress is not None:
+        progress(0.01, desc="Reading the video…")
+    info = probe_video(video_path)
+    if info.frames < 2:
+        raise RuntimeError("That video is too short to continue (fewer than 2 frames).")
+    last_frame = extract_last_frame(video_path, input_dir())
+    uploaded = last_frame.name  # already inside ComfyUI's input folder
+    resolved = resolve_seed(seed)
+
+    if use_wan:
+        positive = (description or "").strip() or EXTEND_DEFAULT_PROMPT
+        width, height = wan_size_for_aspect(info.aspect, quality)
+        length = max(33, min(81, int(added_frames)))
+        length -= (length - 1) % 4  # WAN needs 4k+1 frames
+        gen_fps = 16
+        workflow = build_wan_video_workflow(
+            positive=positive,
+            negative=WAN_NEGATIVE,
+            width=width,
+            height=height,
+            length=length,
+            fps=gen_fps,
+            image_name=uploaded,
+            seed=resolved,
+        )
+        timeout = 1800
+        how = f"WAN, {length} new frames at {width}×{height}"
+    else:
+        length = max(14, min(50, int(added_frames)))
+        gen_fps = 6
+        workflow = build_svd_workflow(
+            uploaded, frames=length, fps=gen_fps, motion=int(motion), seed=resolved
+        )
+        timeout = 1200
+        how = f"SVD, {length} new frames, motion {int(motion)}"
+
+    paths = run_workflow(workflow, timeout_seconds=timeout, progress=progress)
+    new_clip = paths[0]
+
+    if progress is not None:
+        progress(0.97, desc="Joining the clips…")
+    stem = Path(video_path).stem[:40]
+    combined = output_dir() / f"simple_ui_extended_{stem}_{int(time.time())}.mp4"
+    concat_videos(video_path, new_clip, combined, fps=info.fps, second_fps=gen_fps)
+    final = probe_video(combined)
+    msg = (
+        f"Extended `{Path(video_path).name}` from {info.duration:.1f}s to {final.duration:.1f}s "
+        f"({how}, seed {resolved}). New clip alone: `{new_clip.name}`."
+    )
+    return combined, new_clip, msg

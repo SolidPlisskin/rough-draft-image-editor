@@ -11,6 +11,7 @@ from comfy_client import (
     NEGATIVE_PRESET_CHOICES,
     engine_info,
     engine_reachable,
+    extend_video,
     generate_image,
     generate_image_to_video_svd,
     generate_img2img,
@@ -271,6 +272,55 @@ def on_video_wan(
         _handle_error(err)
 
 
+EXTEND_ENGINES = ["WAN (prompt-guided)", "SVD (motion only, no prompt)"]
+
+
+def _video_path(value) -> str | None:
+    """gr.Video hands back a path string, a dict, or an object with .path."""
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        inner = value.get("video") or value.get("path") or value
+        if isinstance(inner, dict):
+            inner = inner.get("path")
+        return str(inner) if inner else None
+    path = getattr(value, "path", None)
+    return str(path) if path else None
+
+
+def on_extend_video(
+    video,
+    description: str,
+    engine: str,
+    added_frames: float,
+    quality: str,
+    seed: float,
+    motion: float,
+    progress=gr.Progress(),
+):
+    path = _video_path(video)
+    if not path:
+        raise gr.Error("Upload a video, or pick one in the Gallery and click Use in Extend.")
+    try:
+        combined, new_clip, msg = extend_video(
+            path,
+            description=description or "",
+            engine=engine,
+            added_frames=int(added_frames),
+            quality=quality,
+            seed=int(seed),
+            motion=int(motion),
+            progress=progress,
+        )
+        if (description or "").strip():
+            remember_prompt(description, kind="extend")
+        return str(combined), str(new_clip), msg, prompt_dropdown_update("extend")
+    except Exception as err:
+        _handle_error(err)
+
+
 def _style_map(choice: str) -> str:
     key = (choice or "").lower()
     if key.startswith("flux"):
@@ -427,6 +477,15 @@ def send_to_svd(path: str | None):
 def send_to_wan(path: str | None):
     p = require_selected_image(path)
     return p, f"Sent `{Path(p).name}` to **Text/Image → Video (WAN)**."
+
+
+def send_video_to_extend(name: str | None, video_map: dict):
+    if not name or not video_map or name not in video_map:
+        raise gr.Error("Pick a video in the Videos list first.")
+    p = video_map[name]
+    if not Path(p).exists():
+        raise gr.Error("That video is gone. Click Refresh gallery.")
+    return p, f"Sent `{Path(p).name}` to **Extend video**."
 
 
 def build_ui() -> gr.Blocks:
@@ -650,6 +709,50 @@ def build_ui() -> gr.Blocks:
                     with gr.Column():
                         w_out = gr.Video(label="Result", height=480)
 
+            with gr.Tab("Extend video"):
+                gr.Markdown(
+                    "Make an existing clip longer. AI Creator takes the **last frame**, "
+                    "continues the motion from it, and joins the new footage onto the end. "
+                    "Describe what should happen next, or leave it blank to simply carry on. "
+                    "**WAN** follows your description (needs the WAN pack); **SVD** just adds motion "
+                    "(needs the SVD pack). Audio is not carried over."
+                )
+                with gr.Row():
+                    with gr.Column():
+                        x_video = gr.Video(label="Video to extend", sources=["upload"])
+                        x_desc = gr.Textbox(
+                            label="What happens next (optional)",
+                            lines=3,
+                            placeholder="She turns and smiles at the camera, wind in her hair…",
+                        )
+                        x_history = gr.Dropdown(
+                            label="Recent prompts",
+                            choices=list_prompt_choices("extend"),
+                            value=None,
+                            allow_custom_value=False,
+                            interactive=True,
+                        )
+                        x_engine = gr.Radio(EXTEND_ENGINES, value=EXTEND_ENGINES[0], label="Engine")
+                        x_added = gr.Slider(
+                            14, 81, value=49, step=1,
+                            label="Frames to add (WAN uses 33–81 at 16 fps ≈ 2–5 s · SVD uses 14–50 at 6 fps)",
+                        )
+                        x_quality = gr.Radio(
+                            ["Fast", "High detail (slower)"], value="Fast", label="Quality"
+                        )
+                        x_seed = gr.Number(value=-1, precision=0, label="Seed (−1 = random)")
+                        with gr.Accordion("Advanced", open=False):
+                            x_motion = gr.Slider(
+                                50, 200, value=127, step=1, label="Motion amount (SVD only)"
+                            )
+                        with gr.Row():
+                            x_btn = gr.Button("Extend video", variant="primary")
+                            x_cancel = gr.Button("Cancel")
+                        x_status = gr.Markdown("")
+                    with gr.Column():
+                        x_out = gr.Video(label="Extended video (original + new)", height=420)
+                        x_new = gr.Video(label="New footage only", height=220)
+
             with gr.Tab("Gallery"):
                 gr.Markdown(
                     "Browse recent results from the output folder. "
@@ -692,6 +795,7 @@ def build_ui() -> gr.Blocks:
                         )
                         g_video = gr.Video(label="Video preview", height=360)
                         g_star_video = gr.Button("★ Star / unstar video")
+                        g_to_extend = gr.Button("Use in Extend video")
                         g_video_map = gr.State({})
 
         gr.Examples(
@@ -706,6 +810,8 @@ def build_ui() -> gr.Blocks:
 **Output folder:** `{output_dir()}`
 
 **Styles:** Anime (Pony) · Illustration · Realistic (Juggernaut) · Flux Dev FP8
+
+**Extend video:** continue any clip from its last frame with WAN (prompt) or SVD (motion) and get one longer file.
 
 **Controls:** Aspect, Seed (−1 = random), Upscale 4×, Gallery to reuse results.
 
@@ -724,6 +830,7 @@ def build_ui() -> gr.Blocks:
         c_history.change(apply_recent_prompt, [c_history], [c_desc])
         e_history.change(apply_recent_prompt, [e_history], [e_desc])
         w_history.change(apply_recent_prompt, [w_history], [w_desc])
+        x_history.change(apply_recent_prompt, [x_history], [x_desc])
 
         c_event = c_btn.click(
             on_create,
@@ -778,11 +885,18 @@ def build_ui() -> gr.Blocks:
             [w_out, w_status, w_history],
         ).then(refresh_gallery, [g_filter], gallery_outputs)
 
-        cancelable = [c_event, c_up_event, e_event, e_up_event, v_event, w_event]
+        x_event = x_btn.click(
+            on_extend_video,
+            [x_video, x_desc, x_engine, x_added, x_quality, x_seed, x_motion],
+            [x_out, x_new, x_status, x_history],
+        ).then(refresh_gallery, [g_filter], gallery_outputs)
+
+        cancelable = [c_event, c_up_event, e_event, e_up_event, v_event, w_event, x_event]
         c_cancel.click(on_cancel, outputs=[c_status], cancels=cancelable)
         e_cancel.click(on_cancel, outputs=[e_status], cancels=cancelable)
         v_cancel.click(on_cancel, outputs=[v_status], cancels=cancelable)
         w_cancel.click(on_cancel, outputs=[w_status], cancels=cancelable)
+        x_cancel.click(on_cancel, outputs=[x_status], cancels=cancelable)
 
         g_refresh.click(refresh_gallery, [g_filter], gallery_outputs)
         g_filter.change(refresh_gallery, [g_filter], gallery_outputs)
@@ -802,6 +916,9 @@ def build_ui() -> gr.Blocks:
         g_to_edit.click(send_to_edit, [g_selected], [e_img, g_action])
         g_to_svd.click(send_to_svd, [g_selected], [v_img, g_action])
         g_to_wan.click(send_to_wan, [g_selected], [w_img, g_action])
+        g_to_extend.click(
+            send_video_to_extend, [g_video_pick, g_video_map], [x_video, g_action]
+        )
 
     return demo
 
