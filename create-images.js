@@ -1,14 +1,19 @@
+// Starts the ComfyUI engine, then the AI Creator (Gradio) UI on top of it.
+//
+// The UI runs inside the SAME Python environment as ComfyUI (app/env). That
+// environment is proven to work whenever the engine starts, so the UI cannot
+// be taken down by a stale or broken second virtualenv. Its two extra packages
+// are (re)installed on every launch; uv makes that a no-op when nothing changed.
 module.exports = {
   daemon: true,
   run: [
     {
-      when: "{{!exists('simple-ui/ui-env')}}",
       method: "shell.run",
       params: {
-        venv: "ui-env",
-        path: "simple-ui",
+        venv: "env",
+        path: "app",
         message: [
-          "uv pip install -r requirements.txt"
+          "uv pip install -r ../simple-ui/requirements.txt"
         ]
       }
     },
@@ -27,7 +32,8 @@ module.exports = {
           "{{platform === 'win32' && gpu === 'amd' ? 'python main.py --directml' : (gpu === 'nvidia' ? 'python main.py --gpu-only' : 'python main.py')}}"
         ],
         on: [{
-          event: "/(http:\\/\\/[0-9.:]+)/",
+          // Only accept a full host:port address, never a bare host.
+          event: "/(http:\\/\\/[0-9.]+:[0-9]+)/",
           done: true
         }, {
           event: "/errno/i",
@@ -47,17 +53,18 @@ module.exports = {
     {
       method: "shell.run",
       params: {
-        venv: "ui-env",
+        venv: "env",
         env: {
           COMFY_URL: "{{local.comfy_url}}",
-          GRADIO_PORT: "{{port}}"
+          GRADIO_PORT: "{{port}}",
+          GRADIO_ANALYTICS_ENABLED: "False"
         },
-        path: "simple-ui",
+        path: "app",
         message: [
-          "python app.py --port {{port}}"
+          "python ../simple-ui/app.py"
         ],
         on: [{
-          event: "/(http:\\/\\/[0-9.:]+)/",
+          event: "/(http:\\/\\/[0-9.]+:[0-9]+)/",
           done: true
         }]
       }

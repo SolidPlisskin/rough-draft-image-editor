@@ -42,18 +42,24 @@ One-click Pinokio launcher for a local, uncensored image generation stack built 
 3. Clone custom nodes
 4. Link shared model drive folders
 5. Copy starter workflows into `app/user/default/workflows/`
-6. Create the Gradio UI venv (`simple-ui/ui-env`)
+6. Install the Gradio UI's packages (`simple-ui/requirements.txt`) into the same
+   `app/env` venv, so the UI always runs on the interpreter the engine runs on
 
 ## Maintenance scripts
 
 - `update.js` — pulls this repo, ComfyUI and custom nodes, reinstalls
   requirements, then re-pins PyTorch
-- `repair.js` — deletes and rebuilds both venvs (`app/env`, `simple-ui/ui-env`)
-  without touching ComfyUI or downloaded models
-- `reset.js` — deletes `app/`, `simple-ui/ui-env` and the models-ready marker
+- `repair.js` — deletes and rebuilds `app/env` (and clears the legacy
+  `simple-ui/ui-env`) without touching ComfyUI or downloaded models
+- `reset.js` — deletes `app/`, the legacy `simple-ui/ui-env` and the models-ready marker
 
 ## Gradio UI notes
 
+- `create-images.js` reinstalls the UI requirements on every launch (a no-op
+  when satisfied), runs `python ../simple-ui/app.py` from `app/`, and only
+  accepts a full `host:port` address from either process's output
+- `app.py` takes its port from `GRADIO_PORT`; if that port is busy it falls
+  back to letting Gradio pick a free one
 - Results are written by ComfyUI to `app/output`, outside the UI's working
   directory. Gradio 5+ only serves files from the CWD, the temp dir, or
   `allowed_paths`, so `app.py` passes the output and input folders there

@@ -48,7 +48,7 @@ module.exports = {
       icon: "fa-solid fa-kit-medical",
       text: "Repair app (reinstall Python packages, keep models)",
       href: "repair.js",
-      confirm: "Rebuilds the two Python environments. Use this if the app stopped launching after a Pinokio update. Models and saved images are kept. Takes 5–15 minutes."
+      confirm: "Rebuilds the Python environment. Use this if the app stopped launching after a Pinokio update. Models and saved images are kept. Takes 5–15 minutes."
     }, {
       icon: "fa-regular fa-circle-xmark",
       text: "Reset everything",
