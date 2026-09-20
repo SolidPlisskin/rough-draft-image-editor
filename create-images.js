@@ -13,9 +13,28 @@
 //      it can
 //   6. start ComfyUI, 7. start the UI in the same environment
 // Custom nodes are intentionally NOT pulled here (Advanced → Update app does).
+//
+// Every git step uses {{local.git}} plus GIT_ENV so a launch can never sit
+// behind a login prompt. This launcher's GitHub repo is private. On Windows,
+// Pinokio's bundled git defaults to the "helper-selector" credential helper,
+// which opens a desktop pop-up that is invisible from Pinokio and blocks the
+// launch until someone clicks it. Pinning Git Credential Manager (which the
+// same git ships) removes the pop-up; GCM_INTERACTIVE=never and
+// GIT_TERMINAL_PROMPT=0 make a missing login fail within a second so the
+// "|| echo ... skipped" fallbacks take over and the app still starts.
+const GIT_ENV = {
+  GIT_TERMINAL_PROMPT: "0",
+  GCM_INTERACTIVE: "never"
+}
 module.exports = {
   daemon: true,
   run: [
+    {
+      method: "local.set",
+      params: {
+        git: "{{platform === 'win32' ? 'git -c credential.helper= -c credential.helper=manager' : 'git'}}"
+      }
+    },
     {
       // Pinokio can install an app as a plain download without a .git folder.
       // Then no update can ever arrive. Convert such a folder into a real
@@ -23,25 +42,28 @@ module.exports = {
       // app/, models, saved images, prompt history — is left alone).
       method: "shell.run",
       params: {
+        env: GIT_ENV,
         message: [
-          "{{platform === 'win32' ? 'if not exist .git (echo Turning this folder into a git checkout so updates work && git init -b main && git remote add origin https://github.com/SolidPlisskin/nsfw-ai-generation-stack-complete-se.git && git fetch --depth 50 origin main && git reset --hard origin/main && git branch --set-upstream-to=origin/main main)' : '[ -d .git ] || (echo Turning this folder into a git checkout so updates work && git init -b main && git remote add origin https://github.com/SolidPlisskin/nsfw-ai-generation-stack-complete-se.git && git fetch --depth 50 origin main && git reset --hard origin/main && git branch --set-upstream-to=origin/main main)'}}"
+          "{{platform === 'win32' ? 'if not exist .git (echo Turning this folder into a git checkout so updates work && git init -b main && git remote add origin https://github.com/SolidPlisskin/nsfw-ai-generation-stack-complete-se.git && ' + local.git + ' fetch --depth 50 origin main && git reset --hard origin/main && git branch --set-upstream-to=origin/main main)' : '[ -d .git ] || (echo Turning this folder into a git checkout so updates work && git init -b main && git remote add origin https://github.com/SolidPlisskin/nsfw-ai-generation-stack-complete-se.git && ' + local.git + ' fetch --depth 50 origin main && git reset --hard origin/main && git branch --set-upstream-to=origin/main main)'}}"
         ]
       }
     },
     {
       method: "shell.run",
       params: {
+        env: GIT_ENV,
         message: [
-          "git pull --ff-only || echo Launcher auto-update skipped (offline or local changes). Starting anyway."
+          "{{local.git}} pull --ff-only || echo Launcher auto-update skipped (offline, not signed in to GitHub, or local changes). Starting anyway."
         ]
       }
     },
     {
       method: "shell.run",
       params: {
+        env: GIT_ENV,
         path: "app",
         message: [
-          "git pull --ff-only || echo ComfyUI auto-update skipped (offline or local changes). Starting anyway."
+          "{{local.git}} pull --ff-only || echo ComfyUI auto-update skipped (offline or local changes). Starting anyway."
         ]
       }
     },

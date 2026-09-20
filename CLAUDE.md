@@ -71,6 +71,16 @@ Runtime folders (git-ignored): `app/` (ComfyUI), `app/env` (the single venv),
   `torch OK` having skipped the build, driver and kernel checks entirely.
   `diagnose.js` and `create-images.js` pass it; set it yourself when running
   doctor manually, or the report is worthless.
+- **This repo is private on GitHub**, so every `git pull` of the launcher needs
+  a login. Pinokio's bundled Windows git defaults to the `helper-selector`
+  credential helper, which opens a desktop pop-up that Pinokio's terminal never
+  shows; `update.js` sat behind one for 40 minutes on 2026-09-20. Every git step
+  in `create-images.js` and `update.js` therefore runs `{{local.git}}` (on
+  Windows `git -c credential.helper= -c credential.helper=manager`) with
+  `GIT_TERMINAL_PROMPT=0` and `GCM_INTERACTIVE=never`, so a missing login fails
+  in a second and the `|| echo ... skipped` fallback starts the app anyway.
+  Keep that pattern on any new git step. If a launch ever "hangs at git pull",
+  look for a `git-credential-helper-selector` process first.
 
 ## History (all merged to main, PRs #2–#12)
 
@@ -86,6 +96,9 @@ Runtime folders (git-ignored): `app/` (ComfyUI), `app/env` (the single venv),
 - #11 convert a non-git `app/` folder into a real checkout so updates can arrive
 - #12 fix the Windows cmd path templates — `app\models\<name>` was written with
   single backslashes, so JS ate them and cmd ran `mkdir appmodelsdiffusion_models`
+- 2026-09-20 (direct to main) git steps can no longer block on a credential
+  pop-up; stray `appmodels*` folders and stale root copies of `app.py` /
+  `comfy_client.py` removed; `.video-*-ready` markers git-ignored
 
 ## Current state (verified on the PC, 2026-09-20)
 
@@ -126,9 +139,10 @@ also moved the pinned `comfyui-frontend-package`, `comfy-kitchen` and
 `comfy-aimdo` versions. Verified afterwards: engine starts, all five custom
 nodes import, doctor clean.
 
-**Still not verified on real hardware:** WAN/SVD generation and Extend-video
-stitching quality. Everything to date was tested against a fake ComfyUI HTTP
-server. Next step is to click Open AI Creator and run one of each kind.
+Verified on real hardware 2026-09-20: Create image (Realistic style) produced a
+correct 2 MB PNG in about 35 s through the UI. **Still not verified:** WAN/SVD
+generation and Extend-video stitching quality; those were only tested against a
+fake ComfyUI HTTP server. Next step is to run one of each kind.
 
 ## Testing without a GPU
 
