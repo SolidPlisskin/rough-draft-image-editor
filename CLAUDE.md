@@ -94,7 +94,7 @@ The machine is healthy: `doctor.py` reports no repairs needed.
 | | Value |
 |---|---|
 | Launcher | `main` @ `27d3715` (#12), tracking `origin/main` |
-| ComfyUI | `app/` @ `c0ca3a59`, v0.28.0, remote comfyanonymous/ComfyUI |
+| ComfyUI | `app/` @ `5ba116a4`, v0.36.0, remote comfyanonymous/ComfyUI |
 | PyTorch | 2.11.0+cu130 · torchvision 0.26.0 · torchaudio 2.11.0 |
 | GPU | RTX 5090, compute 12.0, driver 610.47; build carries `sm_120` |
 | UI packages | gradio 6.28.0, Pillow 12.3.0, av 17.1.0 — in `app/env` |
@@ -114,10 +114,17 @@ Three things were wrong; all three are fixed:
 - **torch was the cu128 build**, so ComfyUI logged "You need pytorch with cu130
   or higher to use optimized CUDA operations" and disabled its CUDA backend.
   Now cu130. (The cu128 build did carry `sm_120`, so generation worked — this
-  cost speed, not function.)
+  cost speed, not function.) Confirmed after the upgrade: the warning is gone
+  and `comfy_kitchen backend cuda` reports `'disabled': False`, where it was
+  `True` before.
 
 `triton` is still not installed, so ComfyUI reports that backend unavailable.
 Harmless for current features; `torch.js` can install it if one is needed.
+
+ComfyUI was pulled forward 350 commits on 2026-09-20 (v0.28.0 → v0.36.0), which
+also moved the pinned `comfyui-frontend-package`, `comfy-kitchen` and
+`comfy-aimdo` versions. Verified afterwards: engine starts, all five custom
+nodes import, doctor clean.
 
 **Still not verified on real hardware:** WAN/SVD generation and Extend-video
 stitching quality. Everything to date was tested against a fake ComfyUI HTTP
