@@ -1,7 +1,8 @@
 # AI Creator — project brief for Claude Code
 
-Read this first. It is the handoff from the cloud sessions (Sept 2026) to a local
-session running on the owner's Windows PC.
+Read this first. Written by the cloud sessions (Sept 2026); refreshed
+2026-09-20 from a local session on the owner's Windows PC, where the state in
+"Current state" below was verified directly.
 
 ## What this is
 
@@ -35,7 +36,8 @@ repo, on `main`). Pinokio is 8.x. GPU: NVIDIA RTX 5090.
 
 Runtime folders (git-ignored): `app/` (ComfyUI), `app/env` (the single venv),
 `app/output` (results), `app/input` (uploads), `logs/ui.log`, `diagnostics.txt`.
-`simple-ui/ui-env` is legacy and should not exist any more.
+`simple-ui/ui-env` is legacy, no longer used, and has been deleted on the PC.
+`repair.js`, `reset.js` and `update.js` each remove it if it reappears.
 
 ## What every "Open AI Creator" does (create-images.js)
 
@@ -64,8 +66,13 @@ Runtime folders (git-ignored): `app/` (ComfyUI), `app/env` (the single venv),
   `app/output`; keep using it for anything that stores or reuses a path.
 - WAN 2.1 i2v needs `length = 4k+1` frames and sizes that are multiples of 16.
 - `doctor.py` must always exit 0; it may print `WARNING:` lines.
+- `doctor.py` gates every NVIDIA check on `gpu == "nvidia"`, which comes from
+  `AI_CREATOR_GPU`. Run it by hand without that variable and it happily prints
+  `torch OK` having skipped the build, driver and kernel checks entirely.
+  `diagnose.js` and `create-images.js` pass it; set it yourself when running
+  doctor manually, or the report is worthless.
 
-## History of this handoff (all merged to main, PRs #2–#9)
+## History (all merged to main, PRs #2–#12)
 
 - #2 Gradio `allowed_paths` fix (results never displayed); favorites path fix;
   torch pins; repair.js; reset removes UI venv; models detected on the drive
@@ -75,27 +82,46 @@ Runtime folders (git-ignored): `app/` (ComfyUI), `app/env` (the single venv),
 - #6/#7 Extend video tab + "Extend again"
 - #8 "Check my setup" diagnostics; Blackwell (sm_120) kernel check; `logs/ui.log`
 - #9 driver from `nvidia-smi`; upgrade cu128 → cu130 when driver ≥ 580
+- #10 this brief
+- #11 convert a non-git `app/` folder into a real checkout so updates can arrive
+- #12 fix the Windows cmd path templates — `app\models\<name>` was written with
+  single backslashes, so JS ate them and cmd ran `mkdir appmodelsdiffusion_models`
 
-## Where things stood at handoff
+## Current state (verified on the PC, 2026-09-20)
 
-- **Root cause found 2026-09-20:** the Pinokio app folder on the PC had no
-  `.git` (Pinokio installed it as a plain download). Every `git pull` and
-  Update app had silently failed, so none of PRs #2–#9 had reached the machine.
-  Fix: `git init -b main` + fetch + `reset --hard origin/main` in that folder
-  (done manually by the owner; the launcher and update.js now do this
-  themselves when `.git` is missing).
-- Engine confirmed running on the PC (ComfyUI 0.36-era log seen), but torch was
-  the CUDA 12.8 build → ComfyUI warned "need pytorch with cu130". #9 fixes that on
-  the next launch if the driver is ≥ 580.
-- The owner still reports "not running properly" without specifics. Nothing in
-  the shared log was an error. **First thing to do locally:** run
-  `Advanced → Check my setup` (or `python simple-ui\doctor.py --dry-run --report diagnostics.txt`
-  inside `app\env`), read `diagnostics.txt`, `app\user\comfyui.log`, `logs\ui.log`,
-  then click Open AI Creator and watch Pinokio's terminal.
-- Verify `git log -1` in the app folder is at or after #9 (`0d65530`); if not,
-  Advanced → Update app (or `git pull`) first.
-- Not verified on real hardware: WAN/SVD generation and the Extend video
-  stitching quality. Everything was tested against a fake ComfyUI HTTP server.
+The machine is healthy: `doctor.py` reports no repairs needed.
+
+| | Value |
+|---|---|
+| Launcher | `main` @ `27d3715` (#12), tracking `origin/main` |
+| ComfyUI | `app/` @ `c0ca3a59`, v0.28.0, remote comfyanonymous/ComfyUI |
+| PyTorch | 2.11.0+cu130 · torchvision 0.26.0 · torchaudio 2.11.0 |
+| GPU | RTX 5090, compute 12.0, driver 610.47; build carries `sm_120` |
+| UI packages | gradio 6.28.0, Pillow 12.3.0, av 17.1.0 — in `app/env` |
+
+Three things were wrong; all three are fixed:
+
+- **The checkout was parked on a feature branch**
+  (`claude/friendly-mccarthy-nxu7lq`), so `git pull --ff-only` tracked *that*
+  branch and `main` moved without it — #11 and #12 never arrived. Now on `main`.
+  If a launch ever seems to ignore a merged fix, check `git branch -vv` here
+  first; this failure is silent.
+- **`app/env` had no gradio.** The UI had still been running out of the legacy
+  `simple-ui/ui-env`, even though #3 moved it into `app/env`; step 3 of the
+  launch was meant to close that gap but had never completed on this machine.
+  `app/env` now has the UI packages and `ui-env` is deleted. This was the
+  owner's "not running properly": ComfyUI started fine, the UI could not.
+- **torch was the cu128 build**, so ComfyUI logged "You need pytorch with cu130
+  or higher to use optimized CUDA operations" and disabled its CUDA backend.
+  Now cu130. (The cu128 build did carry `sm_120`, so generation worked — this
+  cost speed, not function.)
+
+`triton` is still not installed, so ComfyUI reports that backend unavailable.
+Harmless for current features; `torch.js` can install it if one is needed.
+
+**Still not verified on real hardware:** WAN/SVD generation and Extend-video
+stitching quality. Everything to date was tested against a fake ComfyUI HTTP
+server. Next step is to click Open AI Creator and run one of each kind.
 
 ## Testing without a GPU
 
