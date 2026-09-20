@@ -29,13 +29,13 @@ RTX 5090.
 | `pinokio.js` | Pinokio menu. Detects install state, exposes Open / Advanced actions |
 | `install.js`, `finish-install.js`, `setup-everything.js` | First install: clone ComfyUI + custom nodes, requirements, `torch.js`, link model drive, copy workflows, UI requirements |
 | `create-images.js` | **The launcher.** Self-updating and self-repairing (see below), then starts ComfyUI and the UI |
-| `torch.js` | PyTorch pins per platform/GPU. NVIDIA: CUDA 13.0 wheels if driver ≥ 580 else CUDA 12.8 |
+| `torch.js` | PyTorch pins per platform/GPU. NVIDIA: CUDA 13.0 wheels if driver ≥ 580 else CUDA 12.8. With `sageattention: true` (all callers pass it) also SageAttention 2.2 + Triton on NVIDIA, non-fatal |
 | `update.js`, `repair.js`, `reset.js`, `diagnose.js` | Advanced actions: update everything / rebuild the venv / wipe / write `diagnostics.txt` |
-| `download-*.json|js` | Model downloads from HuggingFace into `app/models/*` (drive-linked, shared across Pinokio apps) |
+| `download-*.json|js` | Model downloads from HuggingFace into `app/models/*` (drive-linked, shared across Pinokio apps). `download-video-wan.js` = WAN 2.2 14B fp8 t2v+i2v pairs + the 4-step lightning LoRAs, ~62 GB |
 | `simple-ui/app.py` | Gradio 6 UI. Runs **inside `app/env`** (ComfyUI's venv), launched from `app/` as `python ../simple-ui/app.py` |
 | `simple-ui/comfy_client.py` | Builds ComfyUI API workflows, queues them, waits for outputs, `extend_video` |
 | `simple-ui/video_tools.py` | PyAV: probe, last frame, concatenate clips |
-| `simple-ui/doctor.py` | Environment self-check/repair (torch build vs GPU, gradio, custom-node deps); `--report` writes diagnostics |
+| `simple-ui/doctor.py` | Environment self-check/repair (torch build vs GPU, gradio, custom-node deps, SageAttention+Triton on NVIDIA → writes `app/.sage-ok`); `--report` writes diagnostics |
 | `simple-ui/user_store.py` | Prompt history + favorites in `simple-ui/user_data.json` |
 | `workflows/` | Starter ComfyUI workflows copied into `app/user/default/workflows` |
 
@@ -53,7 +53,8 @@ Runtime folders (git-ignored): `app/` (ComfyUI), `app/env` (the single venv),
    from Pinokio; it reinstalls torch if it is CPU-only, cannot see the GPU,
    lacks kernels for the GPU's compute capability, or is CUDA < 13 while the
    driver (from Pinokio or `nvidia-smi`) is ≥ 580
-5. start ComfyUI (`python main.py --gpu-only` on NVIDIA); capture `http://host:port`
+5. start ComfyUI (`python main.py --gpu-only` on NVIDIA, plus `--use-sage-attention`
+   when `app/.sage-ok` exists); capture `http://host:port`
 6. start the UI in the same venv with `COMFY_URL` and `GRADIO_PORT`; capture its URL
 
 ## Conventions that bite
@@ -64,12 +65,26 @@ Runtime folders (git-ignored): `app/` (ComfyUI), `app/env` (the single venv),
   guard with `typeof`), `exists()`, `local.*`, `input.event[1]` (regex capture).
 - Keep the PyTorch pins identical in `torch.js` and `simple-ui/doctor.py`
   (currently torch 2.11.0 / torchvision 0.26.0 / torchaudio 2.11.0; the cu130
-  index only has torchaudio up to 2.11).
+  index only has torchaudio up to 2.11). Same for the SageAttention/Triton pins:
+  Windows wheels come from github.com/woct0rdho/SageAttention releases
+  (`sageattention-2.2.0+cu130torch2.10.0andhigher.post6-cp310-abi3-win_amd64.whl`,
+  cu128 twin) with `triton-windows==3.6.0.post26`; Linux uses PyPI
+  `triton==3.6.0 sageattention==1.0.6`. Triton 3.6 pairs with torch 2.11; bump
+  both together. The flag is gated on `app/.sage-ok`, which only doctor writes,
+  so an install without the wheel just runs on PyTorch attention.
+- WAN 2.2 (`comfy_client.build_wan22_video_workflow`) is ComfyUI's official
+  graph: high-noise expert steps 0→split, low-noise expert split→end, shift 5,
+  euler/simple. Fast = the lightx2v 4-step LoRAs at cfg 1 (steps 4, split 2);
+  High detail = 20 steps, split 10, cfg 3.5. Fast sizes 832x480 / 480x832 /
+  640x640, High detail 1280x720 / 720x1280 / 960x960. `wan_engine()` returns
+  "2.2", "2.1" or None from what is on disk, and everything WAN dispatches on
+  it, so the old 2.1 pack still works as a fallback. WAN 2.2 i2v needs no
+  clip-vision file.
 - Gradio 6: `theme`/`css` go to `launch()`, files outside CWD need
   `allowed_paths`, and every file shown to the user comes back to handlers as a
   **cached copy** under the temp dir. `app.resolve_output_path()` maps it back to
   `app/output`; keep using it for anything that stores or reuses a path.
-- WAN 2.1 i2v needs `length = 4k+1` frames and sizes that are multiples of 16.
+- WAN 2.1 and 2.2 need `length = 4k+1` frames and sizes that are multiples of 16.
 - `doctor.py` must always exit 0; it may print `WARNING:` lines.
 - `doctor.py` gates every NVIDIA check on `gpu == "nvidia"`, which comes from
   `AI_CREATOR_GPU`. Run it by hand without that variable and it happily prints
@@ -110,6 +125,9 @@ Runtime folders (git-ignored): `app/` (ComfyUI), `app/env` (the single venv),
   Disk Saver de-duplicated the two identical files; SVD/WAN/Extend verified
 - 2026-09-20 (direct to main) repo renamed to `rough-draft-image-editor` and
   made public; app renamed "Rough Draft Image Editor" in every user-facing string
+- 2026-09-20 (direct to main) WAN 2.2 14B (t2v + i2v experts, lightning LoRAs
+  for Fast) replaces WAN 2.1 as the preferred video engine; SageAttention 2.2 +
+  Triton 3.6 installed by doctor/torch.js and enabled via `app/.sage-ok`
 
 ## Current state (verified on the PC, 2026-09-20)
 
@@ -162,6 +180,24 @@ Verified on real hardware 2026-09-20, all through the UI's Gradio API
 | Image → Video (WAN), 33 frames Fast | 512x512 clip in 72 s |
 | Extend video, SVD engine (+25) | 25+25 = 50 frames, 8.3 s, in 32 s |
 | Extend video, WAN engine (+33) | 33+33 = 66 frames, 4.1 s, in 72 s; join looks seamless |
+
+Later the same day, after WAN 2.2 + SageAttention (engine logs "Using sage
+attention"; standalone kernel test 0.58 ms vs 2.61 ms for PyTorch SDPA):
+
+| Feature (WAN 2.2, SageAttention on, a game sharing the GPU) | Result |
+|---|---|
+| Text → Video, Fast (4-step lightning), 49 frames | 832x480 clip in 29 s |
+| Image → Video, Fast, 49 frames | 480x832 clip in 31 s |
+| Extend video, WAN engine, Fast, +33 frames | 49+33 = 82 frames, 5.1 s, in 67 s |
+| Text → Video, High detail (20 steps), 49 frames | 1280x720 clip in 404 s; sharp, correct scene |
+| Create image, Realistic, warm | 5 s |
+
+Lesson learned the hard way: with `--gpu-only` the first WAN 2.2 run sat at 100 %
+GPU for 10+ minutes with 26.6 GB dedicated + 17 GB *shared* GPU memory, i.e.
+Windows paging VRAM through system RAM. Two 14 GB experts plus the 6 GB text
+encoder do not fit a 32 GB card at once; without the flag ComfyUI parks the
+idle expert in RAM and the same run takes 29 s. Check shared usage with
+`Get-Counter "\GPU Process Memory(*)\Shared Usage"` if a run ever crawls.
 
 One real bug surfaced: WAN said "models not installed" although every download
 had logged "already exists". `clip_vision_h.safetensors` (WAN) and IP-Adapter's

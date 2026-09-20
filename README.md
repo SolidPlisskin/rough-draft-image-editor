@@ -22,7 +22,7 @@ Optional extras (Advanced → Download extra models):
 - Realistic / photo (Juggernaut XL)
 - Flux Dev FP8 (~17 GB) — cutting-edge quality
 - HD upscaler (4x-UltraSharp)
-- Video: SVD (image→video), WAN (text/image→video)
+- Video: SVD (image→video), WAN 2.2 (text/image→video, 480p fast or 720p high detail)
 
 ---
 
@@ -89,7 +89,7 @@ Saved files go to the app `output` folder (Pinokio → **View my saved images**)
 - Windows + **NVIDIA GPU** (8 GB+ VRAM; 12 GB+ nicer for XL / Flux / video)
 - NVIDIA driver **580 or newer** gets the CUDA 13 PyTorch build ComfyUI recommends for RTX 20-series and newer; older drivers automatically get the CUDA 12.8 build. Both support RTX 50-series (Blackwell); the launcher verifies the installed build has kernels for your GPU
 - **Pinokio 8** or newer recommended (the app was written for 7.x; on 8.x use **Repair app** once if it stops launching)
-- ~20 GB free for base; more for Flux + video packs
+- ~20 GB free for base; Flux adds 17 GB, the SVD pack 10 GB, the WAN 2.2 pack 62 GB
 - [Pinokio](https://pinokio.computer)
 
 ---

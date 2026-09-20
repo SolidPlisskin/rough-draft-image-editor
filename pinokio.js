@@ -40,7 +40,7 @@ module.exports = {
       text: "Download extra models",
       menu: [
         { text: "Video pack — SVD (image→video, ~10 GB)", icon: "fa-solid fa-download", href: "download-video-svd.js", mode: "refresh" },
-        { text: "Video pack — WAN (text/image→video, ~15 GB)", icon: "fa-solid fa-download", href: "download-video-wan.js", mode: "refresh" },
+        { text: "Video pack — WAN 2.2 (text/image→video, ~62 GB)", icon: "fa-solid fa-download", href: "download-video-wan.js", mode: "refresh" },
         { text: "Illustration style model", icon: "fa-solid fa-download", href: "download-illustrious.json", mode: "refresh" },
         { text: "Realistic / photo style model (~7 GB)", icon: "fa-solid fa-download", href: "download-realistic.json", mode: "refresh" },
         { text: "Flux Dev FP8 — cutting edge (~17 GB)", icon: "fa-solid fa-download", href: "download-flux.json", mode: "refresh" },

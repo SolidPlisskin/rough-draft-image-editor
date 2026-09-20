@@ -241,6 +241,63 @@ def check_torch(platform: str, gpu: str, arch: str, driver: float, dry_run: bool
     return ok
 
 
+# --------------------------------------------------------------- sage attention
+
+SAGE_MARKER = APP / ".sage-ok"  # create-images.js passes --use-sage-attention when this exists
+# Prebuilt SageAttention 2.2 wheels for Windows (woct0rdho), cp310-abi3, torch >= 2.10.
+# Keep these and the Triton pins in sync with torch.js. Triton 3.6 pairs with torch 2.11.
+SAGE_WHEELS = {
+    "cu130": "https://github.com/woct0rdho/SageAttention/releases/download/v2.2.0-windows.post6/"
+    "sageattention-2.2.0%2Bcu130torch2.10.0andhigher.post6-cp310-abi3-win_amd64.whl",
+    "cu128": "https://github.com/woct0rdho/SageAttention/releases/download/v2.2.0-windows.post6/"
+    "sageattention-2.2.0%2Bcu128torch2.10.0andhigher.post6-cp310-abi3-win_amd64.whl",
+}
+TRITON_WINDOWS_PIN = "triton-windows==3.6.0.post26"
+TRITON_LINUX_PIN = "triton==3.6.0"
+SAGE_LINUX_PIN = "sageattention==1.0.6"
+
+
+def sage_install_command(platform: str, driver: float) -> list[str] | None:
+    base = ["uv", "pip", "install"]
+    if platform == "win32":
+        index = "cu130" if driver >= CUDA13_MIN_DRIVER else "cu128"
+        return base + [TRITON_WINDOWS_PIN, SAGE_WHEELS[index]]
+    if platform == "linux":
+        return base + [TRITON_LINUX_PIN, SAGE_LINUX_PIN]
+    return None
+
+
+def _sage_ready() -> bool:
+    importlib.invalidate_caches()
+    return can_import("triton") and can_import("sageattention")
+
+
+def check_sage(platform: str, gpu: str, driver: float, dry_run: bool) -> bool:
+    """SageAttention + Triton: faster attention for video models on NVIDIA.
+    Optional: a failure only costs speed, never the launch. The marker file is
+    how create-images.js knows whether to start the engine with the flag."""
+    if gpu != "nvidia" or platform not in ("win32", "linux"):
+        SAGE_MARKER.unlink(missing_ok=True)
+        return True
+    if _sage_ready():
+        say("sageattention + triton OK")
+        SAGE_MARKER.write_text("ok\n", encoding="utf-8")
+        return True
+    say("FIX: SageAttention/Triton missing (faster video generation); installing")
+    cmd = sage_install_command(platform, driver)
+    ok = bool(cmd) and run(cmd, cwd=APP, dry_run=dry_run)
+    if ok and not dry_run:
+        ok = _sage_ready()
+    if ok:
+        say("sageattention + triton installed")
+        if not dry_run:
+            SAGE_MARKER.write_text("ok\n", encoding="utf-8")
+    else:
+        SAGE_MARKER.unlink(missing_ok=True)
+        say("WARNING: SageAttention not available; the engine will use PyTorch attention (slower, still works)")
+    return True
+
+
 # ------------------------------------------------------------------------ gradio UI
 
 
@@ -320,6 +377,7 @@ def write_report(dest: Path, platform: str, gpu: str, arch: str, driver: float) 
         ("Rough Draft Image Editor build", git_stamp(ROOT)),
         ("ComfyUI build", git_stamp(APP)),
         ("Machine (as seen by Pinokio)", f"platform={platform} arch={arch} gpu={gpu} driver={driver or '-'}"),
+        ("SageAttention", "installed (engine started with --use-sage-attention)" if SAGE_MARKER.exists() else "not installed (PyTorch attention)"),
         ("nvidia-smi", nvidia_smi()),
         ("Doctor output", "\n".join(_LOG)),
         ("ComfyUI engine log (last 60 lines)", _tail(APP / "user" / "comfyui.log")),
@@ -346,6 +404,7 @@ def main() -> int:
     check_custom_nodes(args.dry_run)
     # torch last: custom node requirements may list torch and must not undo the fix
     results["torch"] = check_torch(platform, gpu, arch, driver, args.dry_run)
+    check_sage(platform, gpu, driver, args.dry_run)  # after torch: the wheel must match it
 
     status = "OK" if all(results.values()) else "WARN"
     print(f"DOCTOR:{status}", flush=True)

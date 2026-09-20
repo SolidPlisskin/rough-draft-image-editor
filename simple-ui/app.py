@@ -140,7 +140,7 @@ def _status_message() -> str:
             f"- Flux (cutting edge): {'yes' if caps.get('flux') else 'download Flux Dev FP8'}",
             f"- HD upscale: {'yes' if caps.get('upscale') else 'download HD upscaler'}",
             f"- Image → Video (SVD): {'yes' if caps['svd_video'] else 'download SVD video pack'}",
-            f"- Text/Image → Video (WAN): {'yes' if caps['wan_video'] else 'download WAN video pack'}",
+            f"- Text/Image → Video (WAN): {('yes, WAN ' + str(caps.get('wan_engine'))) if caps['wan_video'] else 'download WAN video pack'}",
         ]
         engine = _engine_line()
         if engine:
@@ -710,7 +710,8 @@ def build_ui() -> gr.Blocks:
             with gr.Tab("Text/Image → Video (WAN)"):
                 gr.Markdown(
                     "Generate video from a prompt, optionally guided by a reference image. "
-                    "**Requires WAN pack** — download **Video pack (WAN)** in Pinokio once (~15 GB)."
+                    "**Requires the WAN pack** — download **Video pack (WAN 2.2)** in Pinokio once (~62 GB). "
+                    "Fast = 480p in 4 steps; High detail = 720p in 20 steps (several minutes)."
                 )
                 with gr.Row():
                     with gr.Column():

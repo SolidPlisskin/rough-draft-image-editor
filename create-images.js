@@ -10,7 +10,8 @@
 //   4. (re)install ComfyUI's and the UI's requirements — a no-op when satisfied
 //   5. run simple-ui/doctor.py: verifies PyTorch matches this machine (CUDA on
 //      NVIDIA…), the UI packages import, custom-node deps exist; repairs what
-//      it can
+//      it can. On NVIDIA it also installs SageAttention + Triton and writes
+//      app/.sage-ok when they import, which turns on --use-sage-attention below
 //   6. start ComfyUI, 7. start the UI in the same environment
 // Custom nodes are intentionally NOT pulled here (Advanced → Update app does).
 //
@@ -104,6 +105,10 @@ module.exports = {
       }
     },
     {
+      // No --gpu-only on NVIDIA: WAN 2.2 is two 14 GB experts plus a 6 GB text
+      // encoder, more than a 32 GB card holds. ComfyUI's default memory
+      // management parks the idle expert in RAM; --gpu-only forbids that and
+      // Windows then pages VRAM through system memory, ~10x slower than swapping.
       method: "shell.run",
       params: {
         venv: "env",
@@ -115,7 +120,7 @@ module.exports = {
         },
         path: "app",
         message: [
-          "{{platform === 'win32' && gpu === 'amd' ? 'python main.py --directml' : (gpu === 'nvidia' ? 'python main.py --gpu-only' : 'python main.py')}}"
+          "{{platform === 'win32' && gpu === 'amd' ? 'python main.py --directml' : (gpu === 'nvidia' ? 'python main.py' + (exists('app/.sage-ok') ? ' --use-sage-attention' : '') : 'python main.py')}}"
         ],
         on: [{
           // Only accept a full host:port address, never a bare host.

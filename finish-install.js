@@ -6,7 +6,8 @@ module.exports = {
         uri: "torch.js",
         params: {
           venv: "env",
-          path: "app"
+          path: "app",
+          sageattention: true
         }
       }
     },

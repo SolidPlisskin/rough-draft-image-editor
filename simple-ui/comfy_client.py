@@ -23,6 +23,39 @@ WAN_CLIP_VISION_CANDIDATES = (
     "CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors",
 )
 
+# WAN 2.2 14B (Apache-2.0): two experts per task. The high-noise model runs the
+# first half of the steps, the low-noise model the rest. Preferred whenever the
+# pair is installed; WAN 2.1 above stays as the fallback for older installs.
+WAN22_MODELS = {
+    "t2v": (
+        "wan2.2_t2v_high_noise_14B_fp8_scaled.safetensors",
+        "wan2.2_t2v_low_noise_14B_fp8_scaled.safetensors",
+    ),
+    "i2v": (
+        "wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors",
+        "wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors",
+    ),
+}
+# Official 4-step "lightning" LoRAs (Comfy-Org repackage of lightx2v). The Fast
+# preset uses them: 4 steps at cfg 1 instead of 20 steps at cfg 3.5.
+WAN22_LORAS = {
+    "t2v": (
+        "wan2.2_t2v_lightx2v_4steps_lora_v1.1_high_noise.safetensors",
+        "wan2.2_t2v_lightx2v_4steps_lora_v1.1_low_noise.safetensors",
+    ),
+    "i2v": (
+        "wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors",
+        "wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors",
+    ),
+}
+# The negative prompt WAN 2.2 was tuned with (from ComfyUI's official template).
+WAN22_NEGATIVE = (
+    "色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，"
+    "最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，"
+    "画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，"
+    "杂乱的背景，三条腿，背景人很多，倒着走"
+)
+
 PONY_POSITIVE_PREFIX = "score_9, score_8_up, score_7_up, source_anime, "
 PONY_NEGATIVE = (
     "score_4, score_5, blurry, low quality, bad anatomy, bad hands, watermark, text"
@@ -329,6 +362,24 @@ def wan_clip_vision_name() -> str | None:
     return None
 
 
+def wan22_has(kind: str) -> bool:
+    return all(_model_exists("diffusion_models", f) for f in WAN22_MODELS[kind])
+
+
+def wan22_has_lora(kind: str) -> bool:
+    return all(_model_exists("loras", f) for f in WAN22_LORAS[kind])
+
+
+def wan_engine() -> str | None:
+    """'2.2' when the WAN 2.2 pair is installed, '2.1' for the old pack, else None."""
+    shared = _model_exists("text_encoders", WAN_CLIP) and _model_exists("vae", WAN_VAE)
+    if shared and wan22_has("t2v") and wan22_has("i2v"):
+        return "2.2"
+    if shared and _model_exists("diffusion_models", WAN_UNET) and wan_clip_vision_name():
+        return "2.1"
+    return None
+
+
 def get_capabilities() -> dict:
     return {
         "image": _model_exists("checkpoints", DEFAULT_CHECKPOINT),
@@ -338,14 +389,8 @@ def get_capabilities() -> dict:
         "flux": _model_exists("checkpoints", FLUX_CHECKPOINT),
         "upscale": _model_exists("upscale_models", UPSCALER_MODEL),
         "svd_video": _model_exists("checkpoints", SVD_CHECKPOINT),
-        "wan_video": all(
-            [
-                _model_exists("diffusion_models", WAN_UNET),
-                _model_exists("text_encoders", WAN_CLIP),
-                _model_exists("vae", WAN_VAE),
-                wan_clip_vision_name() is not None,
-            ]
-        ),
+        "wan_video": wan_engine() is not None,
+        "wan_engine": wan_engine(),
     }
 
 
@@ -827,6 +872,132 @@ def build_wan_video_workflow(
     return nodes
 
 
+def build_wan22_video_workflow(
+    positive: str,
+    negative: str,
+    width: int,
+    height: int,
+    length: int,
+    fps: int,
+    image_name: str | None = None,
+    seed: int | None = None,
+    fast: bool = True,
+) -> dict:
+    """WAN 2.2 14B: high-noise expert for the first half of the steps, low-noise
+    expert for the rest (ComfyUI's official template). Fast = the 4-step
+    lightning LoRAs at cfg 1; otherwise 20 steps at cfg 3.5."""
+    kind = "i2v" if image_name else "t2v"
+    high, low = WAN22_MODELS[kind]
+    use_lora = fast and wan22_has_lora(kind)
+    steps, split, cfg = (4, 2, 1.0) if use_lora else (20, 10, 3.5)
+    resolved = resolve_seed(seed)
+    nodes = {
+        "1": {"class_type": "UNETLoader", "inputs": {"unet_name": high, "weight_dtype": "default"}},
+        "2": {"class_type": "UNETLoader", "inputs": {"unet_name": low, "weight_dtype": "default"}},
+        "3": {"class_type": "CLIPLoader", "inputs": {"clip_name": WAN_CLIP, "type": "wan"}},
+        "4": {"class_type": "VAELoader", "inputs": {"vae_name": WAN_VAE}},
+        "5": {"class_type": "CLIPTextEncode", "inputs": {"text": positive, "clip": ["3", 0]}},
+        "6": {"class_type": "CLIPTextEncode", "inputs": {"text": negative, "clip": ["3", 0]}},
+    }
+    model_high, model_low = ["1", 0], ["2", 0]
+    if use_lora:
+        lora_high, lora_low = WAN22_LORAS[kind]
+        nodes["7"] = {
+            "class_type": "LoraLoaderModelOnly",
+            "inputs": {"lora_name": lora_high, "strength_model": 1.0, "model": ["1", 0]},
+        }
+        nodes["8"] = {
+            "class_type": "LoraLoaderModelOnly",
+            "inputs": {"lora_name": lora_low, "strength_model": 1.0, "model": ["2", 0]},
+        }
+        model_high, model_low = ["7", 0], ["8", 0]
+    nodes["9"] = {"class_type": "ModelSamplingSD3", "inputs": {"model": model_high, "shift": 5.0}}
+    nodes["10"] = {"class_type": "ModelSamplingSD3", "inputs": {"model": model_low, "shift": 5.0}}
+
+    if image_name:
+        nodes["11"] = {"class_type": "LoadImage", "inputs": {"image": image_name}}
+        nodes["12"] = {
+            "class_type": "WanImageToVideo",
+            "inputs": {
+                "positive": ["5", 0],
+                "negative": ["6", 0],
+                "vae": ["4", 0],
+                "width": width,
+                "height": height,
+                "length": length,
+                "batch_size": 1,
+                "start_image": ["11", 0],
+            },
+        }
+        cond_pos, cond_neg, latent = ["12", 0], ["12", 1], ["12", 2]
+    else:
+        nodes["12"] = {
+            "class_type": "EmptyHunyuanLatentVideo",
+            "inputs": {"width": width, "height": height, "length": length, "batch_size": 1},
+        }
+        cond_pos, cond_neg, latent = ["5", 0], ["6", 0], ["12", 0]
+
+    sampler = {"steps": steps, "cfg": cfg, "sampler_name": "euler", "scheduler": "simple"}
+    nodes["13"] = {
+        "class_type": "KSamplerAdvanced",
+        "inputs": {
+            **sampler,
+            "add_noise": "enable",
+            "noise_seed": resolved,
+            "start_at_step": 0,
+            "end_at_step": split,
+            "return_with_leftover_noise": "enable",
+            "model": ["9", 0],
+            "positive": cond_pos,
+            "negative": cond_neg,
+            "latent_image": latent,
+        },
+    }
+    nodes["14"] = {
+        "class_type": "KSamplerAdvanced",
+        "inputs": {
+            **sampler,
+            "add_noise": "disable",
+            "noise_seed": 0,
+            "start_at_step": split,
+            "end_at_step": 10000,
+            "return_with_leftover_noise": "disable",
+            "model": ["10", 0],
+            "positive": cond_pos,
+            "negative": cond_neg,
+            "latent_image": ["13", 0],
+        },
+    }
+    nodes["15"] = {"class_type": "VAEDecode", "inputs": {"samples": ["14", 0], "vae": ["4", 0]}}
+    nodes["16"] = {"class_type": "CreateVideo", "inputs": {"images": ["15", 0], "fps": float(fps)}}
+    nodes["17"] = {
+        "class_type": "SaveVideo",
+        "inputs": {
+            "video": ["16", 0],
+            "filename_prefix": "simple_ui_video",
+            "format": "auto",
+            "codec": "auto",
+        },
+    }
+    return nodes
+
+
+def image_aspect(path: str | Path) -> str:
+    """'Landscape', 'Portrait' or 'Square' from an image file; Square on error."""
+    try:
+        from PIL import Image
+
+        with Image.open(path) as im:
+            ratio = im.width / max(1, im.height)
+    except Exception:
+        return "Square"
+    if ratio > 1.15:
+        return "Landscape"
+    if ratio < 0.87:
+        return "Portrait"
+    return "Square"
+
+
 def queue_prompt(workflow: dict) -> str:
     global _current_prompt_id
     client_id = str(uuid.uuid4())
@@ -1143,25 +1314,42 @@ def generate_video_wan(
     positive = description.strip()
     if not positive:
         raise RuntimeError("Please describe the video you want.")
-    negative = WAN_NEGATIVE
-    if quality == "High detail (slower)":
-        width, height, length = 832, 480, min(length, 81)
-    else:
-        width, height = 512, 512
+    high = quality == "High detail (slower)"
     resolved = resolve_seed(seed)
     uploaded = upload_image(image_path) if image_path else None
-    workflow = build_wan_video_workflow(
-        positive=positive,
-        negative=negative,
-        width=width,
-        height=height,
-        length=length,
-        fps=fps,
-        image_name=uploaded,
-        seed=resolved,
-    )
-    paths = run_workflow(workflow, timeout_seconds=1800, progress=progress)
-    return paths[0], f"Video saved to {paths[0].name} (seed {resolved})"
+    if wan_engine() == "2.2":
+        aspect = image_aspect(image_path) if image_path else "Landscape"
+        width, height = wan_size_for_aspect(aspect, quality)
+        workflow = build_wan22_video_workflow(
+            positive=positive,
+            negative=WAN22_NEGATIVE,
+            width=width,
+            height=height,
+            length=min(length, 81),
+            fps=fps,
+            image_name=uploaded,
+            seed=resolved,
+            fast=not high,
+        )
+        timeout = 3600
+    else:
+        if high:
+            width, height, length = 832, 480, min(length, 81)
+        else:
+            width, height = 512, 512
+        workflow = build_wan_video_workflow(
+            positive=positive,
+            negative=WAN_NEGATIVE,
+            width=width,
+            height=height,
+            length=length,
+            fps=fps,
+            image_name=uploaded,
+            seed=resolved,
+        )
+        timeout = 1800
+    paths = run_workflow(workflow, timeout_seconds=timeout, progress=progress)
+    return paths[0], f"Video saved to {paths[0].name} (seed {resolved}, {width}×{height})"
 
 
 # ----------------------------------------------------------------------------- extend
@@ -1174,9 +1362,16 @@ EXTEND_DEFAULT_PROMPT = (
 
 
 def wan_size_for_aspect(aspect: str, quality: str) -> tuple[int, int]:
-    """WAN 2.1 480p-friendly sizes (multiples of 16) matching a source aspect."""
+    """Frame size (multiples of 16) for the installed WAN version and a source aspect.
+    WAN 2.2: Fast 480p-class, High detail 720p. WAN 2.1: the old 480p-friendly sizes."""
     high = quality == "High detail (slower)"
     key = (aspect or "Square").lower()
+    if wan_engine() == "2.2":
+        if key.startswith("land"):
+            return (1280, 720) if high else (832, 480)
+        if key.startswith("port"):
+            return (720, 1280) if high else (480, 832)
+        return (960, 960) if high else (640, 640)
     if key.startswith("land"):
         return (832, 480) if high else (640, 384)
     if key.startswith("port"):
@@ -1228,18 +1423,32 @@ def extend_video(
         length = max(33, min(81, int(added_frames)))
         length -= (length - 1) % 4  # WAN needs 4k+1 frames
         gen_fps = 16
-        workflow = build_wan_video_workflow(
-            positive=positive,
-            negative=WAN_NEGATIVE,
-            width=width,
-            height=height,
-            length=length,
-            fps=gen_fps,
-            image_name=uploaded,
-            seed=resolved,
-        )
-        timeout = 1800
-        how = f"WAN, {length} new frames at {width}×{height}"
+        if wan_engine() == "2.2":
+            workflow = build_wan22_video_workflow(
+                positive=positive,
+                negative=WAN22_NEGATIVE,
+                width=width,
+                height=height,
+                length=length,
+                fps=gen_fps,
+                image_name=uploaded,
+                seed=resolved,
+                fast=quality != "High detail (slower)",
+            )
+            timeout = 3600
+        else:
+            workflow = build_wan_video_workflow(
+                positive=positive,
+                negative=WAN_NEGATIVE,
+                width=width,
+                height=height,
+                length=length,
+                fps=gen_fps,
+                image_name=uploaded,
+                seed=resolved,
+            )
+            timeout = 1800
+        how = f"WAN {wan_engine()}, {length} new frames at {width}×{height}"
     else:
         length = max(14, min(50, int(added_frames)))
         gen_fps = 6

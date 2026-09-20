@@ -7,6 +7,16 @@
 // recommendation for RTX 20-series and newer), otherwise CUDA 12.8 wheels.
 // `gpu_driver` exists on Pinokio 8+; the typeof guard keeps older Pinokio working.
 const TORCH = "torch==2.11.0 torchvision==0.26.0 torchaudio==2.11.0"
+// SageAttention + Triton (faster attention for the video models). Only when the
+// caller passes { sageattention: true }; never fatal. Keep in sync with
+// simple-ui/doctor.py (SAGE_WHEELS / TRITON_*_PIN). Triton 3.6 pairs with torch 2.11.
+const SAGE_RELEASE = "https://github.com/woct0rdho/SageAttention/releases/download/v2.2.0-windows.post6/"
+const SAGE = {
+  win_cu130: `uv pip install triton-windows==3.6.0.post26 ${SAGE_RELEASE}sageattention-2.2.0%2Bcu130torch2.10.0andhigher.post6-cp310-abi3-win_amd64.whl || echo SageAttention install skipped (optional speedup)`,
+  win_cu128: `uv pip install triton-windows==3.6.0.post26 ${SAGE_RELEASE}sageattention-2.2.0%2Bcu128torch2.10.0andhigher.post6-cp310-abi3-win_amd64.whl || echo SageAttention install skipped (optional speedup)`,
+  linux: "uv pip install triton==3.6.0 sageattention==1.0.6 || echo SageAttention install skipped (optional speedup)"
+}
+const SAGE_STEP = (key) => `{{args && args.sageattention ? ${JSON.stringify(SAGE[key])} : ''}}`
 const NEW_DRIVER = "typeof gpu_driver !== 'undefined' && Number.parseFloat(gpu_driver || '0') >= 580"
 
 module.exports = {
@@ -19,7 +29,8 @@ module.exports = {
         "venv": "{{args && args.venv ? args.venv : null}}",
         "path": "{{args && args.path ? args.path : '.'}}",
         "message": [
-          `uv pip install ${TORCH} --index-url https://download.pytorch.org/whl/cu130 --force-reinstall --no-deps`
+          `uv pip install ${TORCH} --index-url https://download.pytorch.org/whl/cu130 --force-reinstall --no-deps`,
+          SAGE_STEP("win_cu130")
         ]
       },
       "next": null
@@ -32,7 +43,8 @@ module.exports = {
         "venv": "{{args && args.venv ? args.venv : null}}",
         "path": "{{args && args.path ? args.path : '.'}}",
         "message": [
-          `uv pip install ${TORCH} --index-url https://download.pytorch.org/whl/cu128 --force-reinstall --no-deps`
+          `uv pip install ${TORCH} --index-url https://download.pytorch.org/whl/cu128 --force-reinstall --no-deps`,
+          SAGE_STEP("win_cu128")
         ]
       },
       "next": null
@@ -45,7 +57,8 @@ module.exports = {
         "venv": "{{args && args.venv ? args.venv : null}}",
         "path": "{{args && args.path ? args.path : '.'}}",
         "message": [
-          `uv pip install ${TORCH} --index-url https://download.pytorch.org/whl/cu130 --force-reinstall`
+          `uv pip install ${TORCH} --index-url https://download.pytorch.org/whl/cu130 --force-reinstall`,
+          SAGE_STEP("linux")
         ]
       },
       "next": null
@@ -58,7 +71,8 @@ module.exports = {
         "venv": "{{args && args.venv ? args.venv : null}}",
         "path": "{{args && args.path ? args.path : '.'}}",
         "message": [
-          `uv pip install ${TORCH} --index-url https://download.pytorch.org/whl/cu128 --force-reinstall`
+          `uv pip install ${TORCH} --index-url https://download.pytorch.org/whl/cu128 --force-reinstall`,
+          SAGE_STEP("linux")
         ]
       },
       "next": null
