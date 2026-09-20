@@ -10,7 +10,7 @@ module.exports = {
 
         message: [
 
-          "{{platform === 'win32' ? 'if not exist app\\models\\diffusion_models mkdir app\\models\\diffusion_models & if not exist app\\models\\text_encoders mkdir app\\models\\text_encoders & if not exist app\\models\\clip_vision mkdir app\\models\\clip_vision' : 'mkdir -p app/models/diffusion_models app/models/text_encoders app/models/clip_vision'}}"
+          "{{platform === 'win32' ? 'if not exist app\\\\models\\\\diffusion_models mkdir app\\\\models\\\\diffusion_models & if not exist app\\\\models\\\\text_encoders mkdir app\\\\models\\\\text_encoders & if not exist app\\\\models\\\\clip_vision mkdir app\\\\models\\\\clip_vision' : 'mkdir -p app/models/diffusion_models app/models/text_encoders app/models/clip_vision'}}"
 
         ]
 

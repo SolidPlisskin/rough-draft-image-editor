@@ -99,7 +99,7 @@ module.exports = {
       method: "shell.run",
       params: {
         message: [
-          "{{platform === 'win32' ? 'if not exist app\\user\\default\\workflows mkdir app\\user\\default\\workflows' : 'mkdir -p app/user/default/workflows'}}"
+          "{{platform === 'win32' ? 'if not exist app\\\\user\\\\default\\\\workflows mkdir app\\\\user\\\\default\\\\workflows' : 'mkdir -p app/user/default/workflows'}}"
         ]
       }
     },
