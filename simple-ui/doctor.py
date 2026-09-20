@@ -75,11 +75,28 @@ def detect_gpu() -> str:
     return _env("AI_CREATOR_GPU").lower() or "unknown"
 
 
-def driver_version() -> float:
-    raw = _env("AI_CREATOR_GPU_DRIVER")
+def _parse_driver(raw: str) -> float:
     try:
-        return float(raw.split()[0]) if raw else 0.0
+        return float(raw.strip().split()[0]) if raw and raw.strip() else 0.0
     except ValueError:
+        return 0.0
+
+
+def driver_version() -> float:
+    """NVIDIA driver version: from Pinokio's gpu_driver, else asked from nvidia-smi."""
+    v = _parse_driver(_env("AI_CREATOR_GPU_DRIVER"))
+    if v:
+        return v
+    try:
+        out = subprocess.run(
+            ["nvidia-smi", "--query-gpu=driver_version", "--format=csv,noheader"],
+            capture_output=True, text=True, timeout=15,
+        )
+        v = _parse_driver(out.stdout.splitlines()[0] if out.stdout.strip() else "")
+        if v:
+            say(f"driver version from nvidia-smi: {v}")
+        return v
+    except (OSError, subprocess.SubprocessError, IndexError):
         return 0.0
 
 
@@ -130,7 +147,7 @@ def torch_install_command(platform: str, gpu: str, arch: str, driver: float) -> 
     return base + TORCH_PIN + ["--index-url", "https://download.pytorch.org/whl/cpu", "--force-reinstall", "--no-deps"]
 
 
-def torch_problem(platform: str, gpu: str) -> str | None:
+def torch_problem(platform: str, gpu: str, driver: float = 0.0) -> str | None:
     """Return a human-readable reason torch must be reinstalled, or None if fine."""
     try:
         import torch  # noqa: WPS433
@@ -181,6 +198,24 @@ def torch_problem(platform: str, gpu: str) -> str | None:
                     f"torch {version} has no kernels for {name} (needs {wanted}); "
                     "reinstalling a build that supports this GPU"
                 )
+        # ComfyUI: "a cu130 or above version of pytorch is required on Nvidia 20
+        # series and above" for its optimized CUDA operations. Upgrade once the
+        # driver allows it; otherwise say what is being left on the table.
+        try:
+            cuda_major = int(str(cuda_build).split(".")[0])
+        except ValueError:
+            cuda_major = 0
+        if cuda_major and cuda_major < 13:
+            if driver >= CUDA13_MIN_DRIVER:
+                return (
+                    f"torch {version} is a CUDA {cuda_build} build but driver {driver} supports "
+                    "CUDA 13; upgrading so ComfyUI can use its optimized CUDA operations"
+                )
+            say(
+                f"WARNING: torch is a CUDA {cuda_build} build; ComfyUI's optimized CUDA ops need "
+                f"CUDA 13, which requires NVIDIA driver {int(CUDA13_MIN_DRIVER)}+ "
+                f"(current: {driver or 'unknown'}). Update the driver and relaunch to get them."
+            )
     elif gpu == "amd" and platform == "win32":
         if not can_import("torch_directml"):
             return "torch-directml is missing"
@@ -191,7 +226,7 @@ def torch_problem(platform: str, gpu: str) -> str | None:
 
 
 def check_torch(platform: str, gpu: str, arch: str, driver: float, dry_run: bool) -> bool:
-    problem = torch_problem(platform, gpu)
+    problem = torch_problem(platform, gpu, driver)
     if not problem:
         say("torch OK")
         return True
