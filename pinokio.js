@@ -1,6 +1,6 @@
 module.exports = {
   version: "7.0",
-  title: "AI Creator",
+  title: "Rough Draft Image Editor",
   description: "Simple tabs for images and video: create, edit, image-to-video, text-to-video.",
   icon: "icon.png",
   menu: async (kernel, info) => {
@@ -143,7 +143,7 @@ module.exports = {
         return [{
           default: true,
           icon: "fa-solid fa-image",
-          text: "Open AI Creator",
+          text: "Open Rough Draft Image Editor",
           href: local.url,
           desc: "Tabs for images, edits, and video."
         }, {
@@ -155,7 +155,7 @@ module.exports = {
       return [{
         default: true,
         icon: "fa-solid fa-hourglass-half",
-        text: "Starting AI Creator…",
+        text: "Starting Rough Draft Image Editor…",
         href: "create-images.js",
         desc: "Usually takes 30–90 seconds the first time."
       }]
@@ -182,7 +182,7 @@ module.exports = {
     return [{
       default: true,
       icon: "fa-solid fa-image",
-      text: "Open AI Creator",
+      text: "Open Rough Draft Image Editor",
       href: "create-images.js",
       desc: "Simple tabs: create image, edit image, image→video, text→video."
     }, {

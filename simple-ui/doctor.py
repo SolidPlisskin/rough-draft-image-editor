@@ -1,4 +1,4 @@
-"""Self-check and self-repair for the AI Creator Python environment.
+"""Self-check and self-repair for the Rough Draft Image Editor Python environment.
 
 Runs inside app/env (the ComfyUI venv) on every launch, before the engine
 starts. It verifies that:
@@ -257,7 +257,7 @@ def check_ui(dry_run: bool) -> bool:
         say(f"FIX: gradio does not import ({type(err).__name__}: {err})")
     ok = run(["uv", "pip", "install", "-r", str(UI_REQ)], cwd=APP, dry_run=dry_run)
     if not ok:
-        say("WARNING: could not install the UI packages; AI Creator will not open")
+        say("WARNING: could not install the UI packages; Rough Draft Image Editor will not open")
     return ok
 
 
@@ -316,14 +316,14 @@ def write_report(dest: Path, platform: str, gpu: str, arch: str, driver: float) 
     import datetime
 
     sections = [
-        ("AI Creator diagnostics", datetime.datetime.now().isoformat(timespec="seconds")),
-        ("AI Creator build", git_stamp(ROOT)),
+        ("Rough Draft Image Editor diagnostics", datetime.datetime.now().isoformat(timespec="seconds")),
+        ("Rough Draft Image Editor build", git_stamp(ROOT)),
         ("ComfyUI build", git_stamp(APP)),
         ("Machine (as seen by Pinokio)", f"platform={platform} arch={arch} gpu={gpu} driver={driver or '-'}"),
         ("nvidia-smi", nvidia_smi()),
         ("Doctor output", "\n".join(_LOG)),
         ("ComfyUI engine log (last 60 lines)", _tail(APP / "user" / "comfyui.log")),
-        ("AI Creator UI log (last 60 lines)", _tail(ROOT / "logs" / "ui.log")),
+        ("Rough Draft Image Editor UI log (last 60 lines)", _tail(ROOT / "logs" / "ui.log")),
     ]
     text = "\n\n".join(f"=== {title} ===\n{body}" for title, body in sections) + "\n"
     dest.write_text(text, encoding="utf-8")

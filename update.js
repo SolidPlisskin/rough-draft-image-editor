@@ -2,8 +2,8 @@
 // then reinstalls requirements and re-pins PyTorch.
 //
 // Same rule as create-images.js: every git step uses {{local.git}} plus
-// GIT_ENV so it can never block on a login prompt (the launcher repo is
-// private on GitHub, and Pinokio's Windows git would otherwise open a
+// GIT_ENV so it can never block on a login prompt (the launcher repo was
+// private until 2026-09-20, and Pinokio's Windows git would otherwise open a
 // credential-helper pop-up that is invisible from Pinokio). A missing login
 // fails within a second and the update carries on with what it has.
 const GIT_ENV = {
@@ -23,7 +23,7 @@ module.exports = {
     params: {
       env: GIT_ENV,
       message: [
-        "{{platform === 'win32' ? 'if not exist .git (echo Turning this folder into a git checkout so updates work && git init -b main && git remote add origin https://github.com/SolidPlisskin/nsfw-ai-generation-stack-complete-se.git && ' + local.git + ' fetch --depth 50 origin main && git reset --hard origin/main && git branch --set-upstream-to=origin/main main)' : '[ -d .git ] || (echo Turning this folder into a git checkout so updates work && git init -b main && git remote add origin https://github.com/SolidPlisskin/nsfw-ai-generation-stack-complete-se.git && ' + local.git + ' fetch --depth 50 origin main && git reset --hard origin/main && git branch --set-upstream-to=origin/main main)'}}"
+        "{{platform === 'win32' ? 'if not exist .git (echo Turning this folder into a git checkout so updates work && git init -b main && git remote add origin https://github.com/SolidPlisskin/rough-draft-image-editor.git && ' + local.git + ' fetch --depth 50 origin main && git reset --hard origin/main && git branch --set-upstream-to=origin/main main)' : '[ -d .git ] || (echo Turning this folder into a git checkout so updates work && git init -b main && git remote add origin https://github.com/SolidPlisskin/rough-draft-image-editor.git && ' + local.git + ' fetch --depth 50 origin main && git reset --hard origin/main && git branch --set-upstream-to=origin/main main)'}}"
       ]
     }
   }, {

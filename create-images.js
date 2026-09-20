@@ -1,4 +1,4 @@
-// Starts the ComfyUI engine, then the AI Creator (Gradio) UI on top of it.
+// Starts the ComfyUI engine, then the Rough Draft Image Editor (Gradio) UI on top of it.
 //
 // Every launch is self-updating and self-repairing, so the app keeps working
 // after months of not being used:
@@ -15,7 +15,7 @@
 // Custom nodes are intentionally NOT pulled here (Advanced → Update app does).
 //
 // Every git step uses {{local.git}} plus GIT_ENV so a launch can never sit
-// behind a login prompt. This launcher's GitHub repo is private. On Windows,
+// behind a login prompt (the repo was private until 2026-09-20). On Windows,
 // Pinokio's bundled git defaults to the "helper-selector" credential helper,
 // which opens a desktop pop-up that is invisible from Pinokio and blocks the
 // launch until someone clicks it. Pinning Git Credential Manager (which the
@@ -44,7 +44,7 @@ module.exports = {
       params: {
         env: GIT_ENV,
         message: [
-          "{{platform === 'win32' ? 'if not exist .git (echo Turning this folder into a git checkout so updates work && git init -b main && git remote add origin https://github.com/SolidPlisskin/nsfw-ai-generation-stack-complete-se.git && ' + local.git + ' fetch --depth 50 origin main && git reset --hard origin/main && git branch --set-upstream-to=origin/main main)' : '[ -d .git ] || (echo Turning this folder into a git checkout so updates work && git init -b main && git remote add origin https://github.com/SolidPlisskin/nsfw-ai-generation-stack-complete-se.git && ' + local.git + ' fetch --depth 50 origin main && git reset --hard origin/main && git branch --set-upstream-to=origin/main main)'}}"
+          "{{platform === 'win32' ? 'if not exist .git (echo Turning this folder into a git checkout so updates work && git init -b main && git remote add origin https://github.com/SolidPlisskin/rough-draft-image-editor.git && ' + local.git + ' fetch --depth 50 origin main && git reset --hard origin/main && git branch --set-upstream-to=origin/main main)' : '[ -d .git ] || (echo Turning this folder into a git checkout so updates work && git init -b main && git remote add origin https://github.com/SolidPlisskin/rough-draft-image-editor.git && ' + local.git + ' fetch --depth 50 origin main && git reset --hard origin/main && git branch --set-upstream-to=origin/main main)'}}"
         ]
       }
     },

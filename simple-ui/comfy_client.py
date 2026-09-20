@@ -137,7 +137,7 @@ def wait_for_server(timeout_seconds: int = 180) -> None:
             time.sleep(2)
     raise RuntimeError(
         "The generation engine is not responding. "
-        "In Pinokio click **Open AI Creator** to restart it. "
+        "In Pinokio click **Open Rough Draft Image Editor** to restart it. "
         f"({last_err})"
     )
 
@@ -211,7 +211,7 @@ def _json_request(
     except (urllib.error.URLError, TimeoutError, ConnectionError) as err:
         raise RuntimeError(
             "Lost connection to the generation engine. "
-            "In Pinokio click **Open AI Creator** to restart it."
+            "In Pinokio click **Open Rough Draft Image Editor** to restart it."
         ) from err
 
 

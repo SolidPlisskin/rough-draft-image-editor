@@ -1,4 +1,4 @@
-# AI Creator
+# Rough Draft Image Editor
 
 **You describe a picture (or video). The app makes it.** No ComfyUI nodes required.
 
@@ -14,7 +14,7 @@ In Pinokio open this app, then:
 |------|--------|--------------|
 | **1** | **Step 1 — Set up** | Installs ComfyUI + deps |
 | **2** | **Step 2 — Download starter pack** | Pony XL + SDXL VAE (~7 GB) |
-| **3** | **Open AI Creator** | Gradio UI in your browser |
+| **3** | **Open Rough Draft Image Editor** | Gradio UI in your browser |
 
 Optional extras (Advanced → Download extra models):
 
@@ -28,7 +28,7 @@ Optional extras (Advanced → Download extra models):
 
 ## Every time
 
-1. Pinokio → **AI Creator** → **Open AI Creator**. Each launch updates and repairs itself: pulls the latest AI Creator and ComfyUI, rebuilds a dead Python environment, reinstalls missing packages, and re-pins PyTorch if a CPU-only build sneaked in. A launch after months away can take 5–15 minutes; a normal one 30–90 seconds
+1. Pinokio → **Rough Draft Image Editor** → **Open Rough Draft Image Editor**. Each launch updates and repairs itself: pulls the latest Rough Draft Image Editor and ComfyUI, rebuilds a dead Python environment, reinstalls missing packages, and re-pins PyTorch if a CPU-only build sneaked in. A launch after months away can take 5–15 minutes; a normal one 30–90 seconds
 2. Pick a tab:
    - **Create image** — text → image (batch up to 4)
    - **Edit image** — img2img
@@ -67,10 +67,10 @@ Saved files go to the app `output` folder (Pinokio → **View my saved images**)
 | Problem | Fix |
 |---------|-----|
 | Anything at all is wrong and you want help | Advanced → **Check my setup**. A text report opens; paste it (or a screenshot of it) into the chat |
-| Updates never seem to arrive / Update app does nothing | The app folder was installed as a plain download without git. Since Sept 2026 the launcher converts it automatically on the next Open AI Creator; if that launcher is too old to do so, run once in PowerShell inside the app folder: `git init -b main; git remote add origin https://github.com/SolidPlisskin/nsfw-ai-generation-stack-complete-se.git; git fetch --depth 50 origin main; git reset --hard origin/main; git branch --set-upstream-to=origin/main main` |
-| Stopped working after a Pinokio update (nothing launches, "python not found", venv errors) | Just click **Open AI Creator** again; the launcher detects a dead environment and rebuilds it. If it still fails, Advanced → **Repair app** |
+| Updates never seem to arrive / Update app does nothing | The app folder was installed as a plain download without git. Since Sept 2026 the launcher converts it automatically on the next Open Rough Draft Image Editor; if that launcher is too old to do so, run once in PowerShell inside the app folder: `git init -b main; git remote add origin https://github.com/SolidPlisskin/rough-draft-image-editor.git; git fetch --depth 50 origin main; git reset --hard origin/main; git branch --set-upstream-to=origin/main main` |
+| Stopped working after a Pinokio update (nothing launches, "python not found", venv errors) | Just click **Open Rough Draft Image Editor** again; the launcher detects a dead environment and rebuilds it. If it still fails, Advanced → **Repair app** |
 | Status block says the engine is running on the CPU | Advanced → **Repair app**; if it persists, update the NVIDIA driver (580+ recommended) |
-| Image finishes but never appears / error mentions "gradio cache dir" or "allowed_paths" | Advanced → **Update app**, then reopen **Open AI Creator** |
+| Image finishes but never appears / error mentions "gradio cache dir" or "allowed_paths" | Advanced → **Update app**, then reopen **Open Rough Draft Image Editor** |
 | Download starter pack still showing | Finish the ~7 GB download |
 | Page stuck on Starting… | Wait 2 min, refresh; or reopen from Pinokio |
 | Purple / broken colors | Re-run **Download starter pack** (includes VAE) |
@@ -78,7 +78,7 @@ Saved files go to the app `output` folder (Pinokio → **View my saved images**)
 | Extend video says a model is missing | Download the WAN pack (for prompt-guided) or the SVD pack (motion only) under Advanced |
 | Extended video has no sound | Expected: the continuation is silent, so audio is not carried over |
 | Flux / Realistic missing | Advanced → download that model |
-| Cancel does nothing / stuck generating | Click **Cancel** again, then reopen **Open AI Creator** |
+| Cancel does nothing / stuck generating | Click **Cancel** again, then reopen **Open Rough Draft Image Editor** |
 | App broken | Advanced → **Repair app** first; if that does not help, **Reset everything**, then Set up again |
 | Full node editor | Advanced → **Expert mode (full ComfyUI)** |
 

@@ -71,7 +71,7 @@ def _handle_error(err: Exception):
     if isinstance(err, (urllib.error.URLError, TimeoutError, ConnectionError)):
         raise gr.Error(
             "Lost connection to the generation engine. "
-            "In Pinokio click **Open AI Creator** to restart it."
+            "In Pinokio click **Open Rough Draft Image Editor** to restart it."
         ) from err
     raise gr.Error(f"Something went wrong: {err}") from err
 
@@ -82,12 +82,12 @@ def on_cancel():
         return "**Cancelled.** Stopped the current engine job."
     return (
         "**Cancelled.** Could not reach the engine — "
-        "in Pinokio click **Open AI Creator** if it stays stuck."
+        "in Pinokio click **Open Rough Draft Image Editor** if it stays stuck."
     )
 
 
 def build_stamp() -> str:
-    """Short git id + date of the AI Creator checkout, for the status block."""
+    """Short git id + date of the Rough Draft Image Editor checkout, for the status block."""
     try:
         out = subprocess.run(
             ["git", "log", "-1", "--format=%h %cs"],
@@ -133,7 +133,7 @@ def _status_message() -> str:
         if not models:
             return "**Setup needed.** In Pinokio click **Download starter pack**."
         lines = [
-            f"**Ready** — {len(models)} image model(s) loaded. AI Creator build `{build_stamp()}`.",
+            f"**Ready** — {len(models)} image model(s) loaded. Rough Draft Image Editor build `{build_stamp()}`.",
             f"- Anime / character: {'yes' if caps['image'] else 'download starter pack'}",
             f"- Illustration: {'yes' if caps.get('illustration') else 'download Illustration model'}",
             f"- Realistic / photo: {'yes' if caps.get('realistic') else 'download Realistic model'}",
@@ -529,10 +529,10 @@ def send_video_to_extend(name: str | None, video_map: dict):
 
 
 def build_ui() -> gr.Blocks:
-    with gr.Blocks(title="AI Creator") as demo:
+    with gr.Blocks(title="Rough Draft Image Editor") as demo:
         gr.Markdown(
             """
-# AI Creator
+# Rough Draft Image Editor
 **Simple tabs for images and video.** No ComfyUI nodes to figure out.
             """
         )
@@ -751,7 +751,7 @@ def build_ui() -> gr.Blocks:
 
             with gr.Tab("Extend video"):
                 gr.Markdown(
-                    "Make an existing clip longer. AI Creator takes the **last frame**, "
+                    "Make an existing clip longer. Rough Draft Image Editor takes the **last frame**, "
                     "continues the motion from it, and joins the new footage onto the end. "
                     "Describe what should happen next, or leave it blank to simply carry on. "
                     "**WAN** follows your description (needs the WAN pack); **SVD** just adds motion "
@@ -862,7 +862,7 @@ def build_ui() -> gr.Blocks:
 
 **History & favorites:** Recent prompts reload from the dropdowns; star items in Gallery (saved locally).
 
-**First run tips:** Image ~20–90s. Upscale ~5–20s. Video ~2–10 min. In Pinokio use **Open AI Creator**.
+**First run tips:** Image ~20–90s. Upscale ~5–20s. Video ~2–10 min. In Pinokio use **Open Rough Draft Image Editor**.
             """
         )
 
@@ -990,7 +990,7 @@ if __name__ == "__main__":
     output_dir().mkdir(parents=True, exist_ok=True)
     input_dir().mkdir(parents=True, exist_ok=True)
     setup_logging()
-    log.info("starting AI Creator build %s, engine %s, port %s", build_stamp(), os.environ.get("COMFY_URL"), args.port)
+    log.info("starting Rough Draft Image Editor build %s, engine %s, port %s", build_stamp(), os.environ.get("COMFY_URL"), args.port)
     app = build_ui()
     log.info("status: %s", _status_message().replace("\n", " | "))
     launch_kwargs = dict(

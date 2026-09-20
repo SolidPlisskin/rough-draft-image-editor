@@ -1,4 +1,4 @@
-# AI Creator — project brief for Claude Code
+# Rough Draft Image Editor — project brief for Claude Code
 
 Read this first. Written by the cloud sessions (Sept 2026); refreshed
 2026-09-20 from a local session on the owner's Windows PC, where the state in
@@ -6,16 +6,21 @@ Read this first. Written by the cloud sessions (Sept 2026); refreshed
 
 ## What this is
 
-A Pinokio launcher ("AI Creator") that installs ComfyUI into `app/` and puts a
+A Pinokio launcher ("Rough Draft Image Editor", called "Rough Draft Image Editor" until
+2026-09-20) that installs ComfyUI into `app/` and puts a
 simple Gradio UI (`simple-ui/`) in front of it: create image, edit image
 (img2img), image→video (SVD), text/image→video (WAN 2.1), extend video, gallery
 with favorites. The owner is non-technical, uses the app rarely, and wants it to
 keep working untouched for months. Priorities, in order: it launches; it uses
 the RTX 5090; it updates and repairs itself; new features (video extension).
 
-On the owner's PC the app lives at
-`C:\pinokio\api\nsfw-ai-generation-stack-complete-se.git` (a git clone of this
-repo, on `main`). Pinokio is 8.x. GPU: NVIDIA RTX 5090.
+The GitHub repo is `SolidPlisskin/rough-draft-image-editor` (public since
+2026-09-20; it was the private `nsfw-ai-generation-stack-complete-se` before,
+and GitHub redirects the old URL). On the owner's PC the app still lives in the
+old folder `C:\pinokio\api\nsfw-ai-generation-stack-complete-se.git` (a git
+clone of this repo, on `main`); renaming that folder would confuse Pinokio's
+running-state and Disk Saver records, so leave it. Pinokio is 8.x. GPU: NVIDIA
+RTX 5090.
 
 ## Layout
 
@@ -39,7 +44,7 @@ Runtime folders (git-ignored): `app/` (ComfyUI), `app/env` (the single venv),
 `simple-ui/ui-env` is legacy, no longer used, and has been deleted on the PC.
 `repair.js`, `reset.js` and `update.js` each remove it if it reappears.
 
-## What every "Open AI Creator" does (create-images.js)
+## What every "Open Rough Draft Image Editor" does (create-images.js)
 
 1. `git pull --ff-only` here and in `app/` (non-fatal)
 2. probe `app/env`'s python without activating; delete the venv if it cannot start
@@ -71,16 +76,18 @@ Runtime folders (git-ignored): `app/` (ComfyUI), `app/env` (the single venv),
   `torch OK` having skipped the build, driver and kernel checks entirely.
   `diagnose.js` and `create-images.js` pass it; set it yourself when running
   doctor manually, or the report is worthless.
-- **This repo is private on GitHub**, so every `git pull` of the launcher needs
-  a login. Pinokio's bundled Windows git defaults to the `helper-selector`
+- **This repo was private on GitHub until 2026-09-20** (public now), and every
+  `git pull` of the launcher needed a login. Pinokio's bundled Windows git defaults to the `helper-selector`
   credential helper, which opens a desktop pop-up that Pinokio's terminal never
   shows; `update.js` sat behind one for 40 minutes on 2026-09-20. Every git step
   in `create-images.js` and `update.js` therefore runs `{{local.git}}` (on
   Windows `git -c credential.helper= -c credential.helper=manager`) with
   `GIT_TERMINAL_PROMPT=0` and `GCM_INTERACTIVE=never`, so a missing login fails
   in a second and the `|| echo ... skipped` fallback starts the app anyway.
-  Keep that pattern on any new git step. If a launch ever "hangs at git pull",
-  look for a `git-credential-helper-selector` process first.
+  Keep that pattern on any new git step even though the repo is public now: it
+  costs nothing and protects against the repo ever going private again. If a
+  launch ever "hangs at git pull", look for a `git-credential-helper-selector`
+  process first.
 
 ## History (all merged to main, PRs #2–#12)
 
@@ -101,6 +108,8 @@ Runtime folders (git-ignored): `app/` (ComfyUI), `app/env` (the single venv),
   `comfy_client.py` removed; `.video-*-ready` markers git-ignored
 - 2026-09-20 (direct to main) WAN accepts either clip-vision filename after
   Disk Saver de-duplicated the two identical files; SVD/WAN/Extend verified
+- 2026-09-20 (direct to main) repo renamed to `rough-draft-image-editor` and
+  made public; app renamed "Rough Draft Image Editor" in every user-facing string
 
 ## Current state (verified on the PC, 2026-09-20)
 
