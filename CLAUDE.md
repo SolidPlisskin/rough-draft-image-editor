@@ -78,6 +78,12 @@ Runtime folders (git-ignored): `app/` (ComfyUI), `app/env` (the single venv),
 
 ## Where things stood at handoff
 
+- **Root cause found 2026-09-20:** the Pinokio app folder on the PC had no
+  `.git` (Pinokio installed it as a plain download). Every `git pull` and
+  Update app had silently failed, so none of PRs #2–#9 had reached the machine.
+  Fix: `git init -b main` + fetch + `reset --hard origin/main` in that folder
+  (done manually by the owner; the launcher and update.js now do this
+  themselves when `.git` is missing).
 - Engine confirmed running on the PC (ComfyUI 0.36-era log seen), but torch was
   the CUDA 12.8 build → ComfyUI warned "need pytorch with cu130". #9 fixes that on
   the next launch if the driver is ≥ 580.

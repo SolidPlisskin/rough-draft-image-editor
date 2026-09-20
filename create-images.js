@@ -2,6 +2,7 @@
 //
 // Every launch is self-updating and self-repairing, so the app keeps working
 // after months of not being used:
+//   0. if this folder is not a git checkout (plain download), make it one
 //   1. pull the latest launcher + UI from GitHub (non-fatal)
 //   2. pull the latest ComfyUI (non-fatal)
 //   3. if the Python environment is dead (base Python removed by a Pinokio
@@ -15,6 +16,18 @@
 module.exports = {
   daemon: true,
   run: [
+    {
+      // Pinokio can install an app as a plain download without a .git folder.
+      // Then no update can ever arrive. Convert such a folder into a real
+      // checkout of main once (tracked files are replaced, everything else —
+      // app/, models, saved images, prompt history — is left alone).
+      method: "shell.run",
+      params: {
+        message: [
+          "{{platform === 'win32' ? 'if not exist .git (echo Turning this folder into a git checkout so updates work && git init -b main && git remote add origin https://github.com/SolidPlisskin/nsfw-ai-generation-stack-complete-se.git && git fetch --depth 50 origin main && git reset --hard origin/main && git branch --set-upstream-to=origin/main main)' : '[ -d .git ] || (echo Turning this folder into a git checkout so updates work && git init -b main && git remote add origin https://github.com/SolidPlisskin/nsfw-ai-generation-stack-complete-se.git && git fetch --depth 50 origin main && git reset --hard origin/main && git branch --set-upstream-to=origin/main main)'}}"
+        ]
+      }
+    },
     {
       method: "shell.run",
       params: {

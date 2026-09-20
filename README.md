@@ -67,6 +67,7 @@ Saved files go to the app `output` folder (Pinokio → **View my saved images**)
 | Problem | Fix |
 |---------|-----|
 | Anything at all is wrong and you want help | Advanced → **Check my setup**. A text report opens; paste it (or a screenshot of it) into the chat |
+| Updates never seem to arrive / Update app does nothing | The app folder was installed as a plain download without git. Since Sept 2026 the launcher converts it automatically on the next Open AI Creator; if that launcher is too old to do so, run once in PowerShell inside the app folder: `git init -b main; git remote add origin https://github.com/SolidPlisskin/nsfw-ai-generation-stack-complete-se.git; git fetch --depth 50 origin main; git reset --hard origin/main; git branch --set-upstream-to=origin/main main` |
 | Stopped working after a Pinokio update (nothing launches, "python not found", venv errors) | Just click **Open AI Creator** again; the launcher detects a dead environment and rebuilds it. If it still fails, Advanced → **Repair app** |
 | Status block says the engine is running on the CPU | Advanced → **Repair app**; if it persists, update the NVIDIA driver (580+ recommended) |
 | Image finishes but never appears / error mentions "gradio cache dir" or "allowed_paths" | Advanced → **Update app**, then reopen **Open AI Creator** |
