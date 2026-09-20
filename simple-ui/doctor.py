@@ -39,6 +39,7 @@ DIRECTML_PIN = [
     "numpy==1.26.4",
 ]
 CUDA13_MIN_DRIVER = 580.0
+_LOG: list[str] = []  # everything say() printed, for the report
 
 ROOT = Path(__file__).resolve().parents[1]
 APP = ROOT / "app"
@@ -84,6 +85,7 @@ def driver_version() -> float:
 
 def say(msg: str) -> None:
     print(f"[doctor] {msg}", flush=True)
+    _LOG.append(msg)
 
 
 def run(cmd: list[str], cwd: Path | None = None, dry_run: bool = False) -> bool:
@@ -152,6 +154,33 @@ def torch_problem(platform: str, gpu: str) -> str | None:
                 f"torch {version} (cuda {cuda_build}) cannot see the GPU. "
                 "Reinstalling the matching build; if this repeats, update the NVIDIA driver"
             )
+        # The build must contain kernels for this GPU generation. A CUDA 12.6
+        # build reports the GPU as available yet fails on RTX 50-series
+        # (Blackwell, sm_120) with "no kernel image is available".
+        try:
+            name = torch.cuda.get_device_name(0)
+            major, minor = torch.cuda.get_device_capability(0)
+            archs = list(torch.cuda.get_arch_list())
+        except Exception as err:
+            say(f"WARNING: could not query the GPU through torch ({err})")
+        else:
+            say(f"GPU: {name} (compute capability {major}.{minor}) · build kernels: {', '.join(archs) or '-'}")
+            wanted = f"sm_{major}{minor}"
+            # CUDA binaries are forward compatible within a major version:
+            # sm_86 code runs on an 8.9 GPU, but nothing built for 9.x runs on 12.0.
+            def _covers(arch: str) -> bool:
+                digits = "".join(ch for ch in arch[3:] if ch.isdigit()) if arch.startswith("sm_") else ""
+                if not digits:
+                    return False
+                a_major, a_minor = int(digits[:-1]), int(digits[-1])
+                return a_major == major and a_minor <= minor
+
+            supported = any(_covers(a) for a in archs)
+            if archs and not supported:
+                return (
+                    f"torch {version} has no kernels for {name} (needs {wanted}); "
+                    "reinstalling a build that supports this GPU"
+                )
     elif gpu == "amd" and platform == "win32":
         if not can_import("torch_directml"):
             return "torch-directml is missing"
@@ -217,9 +246,59 @@ def check_custom_nodes(dry_run: bool) -> None:
 # ------------------------------------------------------------------------------ main
 
 
+# ---------------------------------------------------------------------------- report
+
+def _tail(path: Path, lines: int = 60) -> str:
+    try:
+        data = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return "(not found)"
+    return "\n".join(data[-lines:]) if data else "(empty)"
+
+
+def nvidia_smi() -> str:
+    try:
+        out = subprocess.run(
+            ["nvidia-smi", "--query-gpu=name,driver_version,memory.total,memory.used,utilization.gpu",
+             "--format=csv"],
+            capture_output=True, text=True, timeout=15,
+        )
+        return out.stdout.strip() or out.stderr.strip() or "(no output)"
+    except (OSError, subprocess.SubprocessError) as err:
+        return f"(nvidia-smi not available: {err})"
+
+
+def git_stamp(path: Path) -> str:
+    try:
+        out = subprocess.run(["git", "log", "-1", "--format=%h %cs %s"], cwd=str(path),
+                             capture_output=True, text=True, timeout=10)
+        return out.stdout.strip() or "(unknown)"
+    except (OSError, subprocess.SubprocessError):
+        return "(unknown)"
+
+
+def write_report(dest: Path, platform: str, gpu: str, arch: str, driver: float) -> None:
+    import datetime
+
+    sections = [
+        ("AI Creator diagnostics", datetime.datetime.now().isoformat(timespec="seconds")),
+        ("AI Creator build", git_stamp(ROOT)),
+        ("ComfyUI build", git_stamp(APP)),
+        ("Machine (as seen by Pinokio)", f"platform={platform} arch={arch} gpu={gpu} driver={driver or '-'}"),
+        ("nvidia-smi", nvidia_smi()),
+        ("Doctor output", "\n".join(_LOG)),
+        ("ComfyUI engine log (last 60 lines)", _tail(APP / "user" / "comfyui.log")),
+        ("AI Creator UI log (last 60 lines)", _tail(ROOT / "logs" / "ui.log")),
+    ]
+    text = "\n\n".join(f"=== {title} ===\n{body}" for title, body in sections) + "\n"
+    dest.write_text(text, encoding="utf-8")
+    say(f"report written to {dest}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--dry-run", action="store_true", help="print repairs instead of running them")
+    parser.add_argument("--report", metavar="FILE", help="also write a diagnostics report to FILE")
     args = parser.parse_args()
 
     platform, gpu, arch, driver = detect_platform(), detect_gpu(), detect_arch(), driver_version()
@@ -235,6 +314,9 @@ def main() -> int:
 
     status = "OK" if all(results.values()) else "WARN"
     print(f"DOCTOR:{status}", flush=True)
+    _LOG.append(f"DOCTOR:{status}")
+    if args.report:
+        write_report(Path(args.report), platform, gpu, arch, driver)
     return 0  # never block the launch
 
 

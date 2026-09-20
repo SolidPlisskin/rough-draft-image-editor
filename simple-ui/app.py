@@ -1,4 +1,5 @@
 import argparse
+import logging
 import os
 import subprocess
 import urllib.error
@@ -42,7 +43,26 @@ EXAMPLE_PROMPTS = [
 ]
 
 
+LOG_PATH = Path(__file__).resolve().parents[1] / "logs" / "ui.log"
+log = logging.getLogger("ai_creator")
+
+
+def setup_logging() -> None:
+    """Errors go to logs/ui.log (read by the diagnostics report) and to the terminal."""
+    try:
+        LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        from logging.handlers import RotatingFileHandler
+
+        handler = RotatingFileHandler(LOG_PATH, maxBytes=512_000, backupCount=2, encoding="utf-8")
+    except OSError:
+        handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+    log.addHandler(handler)
+    log.setLevel(logging.INFO)
+
+
 def _handle_error(err: Exception):
+    log.error("job failed: %s: %s", type(err).__name__, err, exc_info=not isinstance(err, RuntimeError))
     if isinstance(err, RuntimeError):
         msg = str(err)
         if msg == "Cancelled.":
@@ -969,7 +989,10 @@ if __name__ == "__main__":
 
     output_dir().mkdir(parents=True, exist_ok=True)
     input_dir().mkdir(parents=True, exist_ok=True)
+    setup_logging()
+    log.info("starting AI Creator build %s, engine %s, port %s", build_stamp(), os.environ.get("COMFY_URL"), args.port)
     app = build_ui()
+    log.info("status: %s", _status_message().replace("\n", " | "))
     launch_kwargs = dict(
         server_name=args.host,
         share=False,

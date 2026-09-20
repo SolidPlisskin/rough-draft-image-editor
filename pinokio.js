@@ -17,11 +17,17 @@ module.exports = {
       download: info.running("download-starter-pack.js"),
       update: info.running("update.js"),
       reset: info.running("reset.js"),
+      diagnose: info.running("diagnose.js"),
       repair: info.running("repair.js"),
       finish: info.running("finish-install.js")
     }
 
     let advancedMenu = [{
+      icon: "fa-solid fa-stethoscope",
+      text: "Check my setup (diagnostics report)",
+      href: "diagnose.js",
+      desc: "Writes and opens diagnostics.txt: GPU, driver, PyTorch build, engine and UI logs."
+    }, {
       icon: "fa-solid fa-folder-open",
       text: "Open saved images folder",
       href: "open-images.js"
