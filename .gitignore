@@ -13,3 +13,4 @@ __pycache__/
 *.pyc
 simple-ui/user_data.json
 .cursor/
+diagnostics.txt

@@ -66,6 +66,7 @@ Saved files go to the app `output` folder (Pinokio → **View my saved images**)
 
 | Problem | Fix |
 |---------|-----|
+| Anything at all is wrong and you want help | Advanced → **Check my setup**. A text report opens; paste it (or a screenshot of it) into the chat |
 | Stopped working after a Pinokio update (nothing launches, "python not found", venv errors) | Just click **Open AI Creator** again; the launcher detects a dead environment and rebuilds it. If it still fails, Advanced → **Repair app** |
 | Status block says the engine is running on the CPU | Advanced → **Repair app**; if it persists, update the NVIDIA driver (580+ recommended) |
 | Image finishes but never appears / error mentions "gradio cache dir" or "allowed_paths" | Advanced → **Update app**, then reopen **Open AI Creator** |
@@ -85,7 +86,7 @@ Saved files go to the app `output` folder (Pinokio → **View my saved images**)
 ## Requirements
 
 - Windows + **NVIDIA GPU** (8 GB+ VRAM; 12 GB+ nicer for XL / Flux / video)
-- NVIDIA driver **580 or newer** gets the CUDA 13 PyTorch build ComfyUI recommends for RTX 20-series and newer; older drivers automatically get the CUDA 12.8 build
+- NVIDIA driver **580 or newer** gets the CUDA 13 PyTorch build ComfyUI recommends for RTX 20-series and newer; older drivers automatically get the CUDA 12.8 build. Both support RTX 50-series (Blackwell); the launcher verifies the installed build has kernels for your GPU
 - **Pinokio 8** or newer recommended (the app was written for 7.x; on 8.x use **Repair app** once if it stops launching)
 - ~20 GB free for base; more for Flux + video packs
 - [Pinokio](https://pinokio.computer)
