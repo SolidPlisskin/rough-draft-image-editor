@@ -15,6 +15,13 @@ WAN_UNET = "wan2.1_i2v_480p_14B_fp8_scaled.safetensors"
 WAN_CLIP = "umt5_xxl_fp8_e4m3fn_scaled.safetensors"
 WAN_VAE = "wan_2.1_vae.safetensors"
 WAN_CLIP_VISION = "clip_vision_h.safetensors"
+# The WAN clip-vision file is byte-identical to the IP-Adapter image encoder
+# (sha256 64a7ef76...). Pinokio's Disk Saver de-duplicates identical files and
+# may keep only one of the two names, so accept whichever is present.
+WAN_CLIP_VISION_CANDIDATES = (
+    WAN_CLIP_VISION,
+    "CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors",
+)
 
 PONY_POSITIVE_PREFIX = "score_9, score_8_up, score_7_up, source_anime, "
 PONY_NEGATIVE = (
@@ -314,6 +321,14 @@ def _model_exists(*parts: str) -> bool:
     return (models_dir().joinpath(*parts)).exists()
 
 
+def wan_clip_vision_name() -> str | None:
+    """Return whichever WAN clip-vision filename exists, or None."""
+    for name in WAN_CLIP_VISION_CANDIDATES:
+        if _model_exists("clip_vision", name):
+            return name
+    return None
+
+
 def get_capabilities() -> dict:
     return {
         "image": _model_exists("checkpoints", DEFAULT_CHECKPOINT),
@@ -328,7 +343,7 @@ def get_capabilities() -> dict:
                 _model_exists("diffusion_models", WAN_UNET),
                 _model_exists("text_encoders", WAN_CLIP),
                 _model_exists("vae", WAN_VAE),
-                _model_exists("clip_vision", WAN_CLIP_VISION),
+                wan_clip_vision_name() is not None,
             ]
         ),
     }
@@ -738,7 +753,7 @@ def build_wan_video_workflow(
         },
         "4": {
             "class_type": "CLIPVisionLoader",
-            "inputs": {"clip_name": WAN_CLIP_VISION},
+            "inputs": {"clip_name": wan_clip_vision_name() or WAN_CLIP_VISION},
         },
         "5": {
             "class_type": "CLIPTextEncode",

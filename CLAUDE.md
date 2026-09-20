@@ -99,6 +99,8 @@ Runtime folders (git-ignored): `app/` (ComfyUI), `app/env` (the single venv),
 - 2026-09-20 (direct to main) git steps can no longer block on a credential
   pop-up; stray `appmodels*` folders and stale root copies of `app.py` /
   `comfy_client.py` removed; `.video-*-ready` markers git-ignored
+- 2026-09-20 (direct to main) WAN accepts either clip-vision filename after
+  Disk Saver de-duplicated the two identical files; SVD/WAN/Extend verified
 
 ## Current state (verified on the PC, 2026-09-20)
 
@@ -139,10 +141,25 @@ also moved the pinned `comfyui-frontend-package`, `comfy-kitchen` and
 `comfy-aimdo` versions. Verified afterwards: engine starts, all five custom
 nodes import, doctor clean.
 
-Verified on real hardware 2026-09-20: Create image (Realistic style) produced a
-correct 2 MB PNG in about 35 s through the UI. **Still not verified:** WAN/SVD
-generation and Extend-video stitching quality; those were only tested against a
-fake ComfyUI HTTP server. Next step is to run one of each kind.
+Verified on real hardware 2026-09-20, all through the UI's Gradio API
+(`gradio_client` in `app/env`, endpoints `/on_create`, `/on_img2video_svd`,
+`/on_video_wan`, `/on_extend_video`):
+
+| Feature | Result |
+|---|---|
+| Create image, Realistic | 2 MB PNG in ~35 s |
+| Image → Video (SVD), 25 frames | 1024x576 clip in 37 s |
+| Text → Video (WAN), 33 frames Fast | 512x512 clip in 91 s |
+| Image → Video (WAN), 33 frames Fast | 512x512 clip in 72 s |
+| Extend video, SVD engine (+25) | 25+25 = 50 frames, 8.3 s, in 32 s |
+| Extend video, WAN engine (+33) | 33+33 = 66 frames, 4.1 s, in 72 s; join looks seamless |
+
+One real bug surfaced: WAN said "models not installed" although every download
+had logged "already exists". `clip_vision_h.safetensors` (WAN) and IP-Adapter's
+`CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors` are byte-identical (sha256
+`64a7ef76…`), and Pinokio's **Disk Saver** merged them at 10:12 that day, keeping
+only the CLIP-ViT-H name. `comfy_client.wan_clip_vision_name()` now accepts
+either file; the pattern to copy if Disk Saver ever collapses another pair.
 
 ## Testing without a GPU
 
